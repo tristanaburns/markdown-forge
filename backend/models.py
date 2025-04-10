@@ -3,7 +3,7 @@ Database models for Markdown Forge.
 This module defines SQLAlchemy models for users, projects, and files.
 """
 
-from sqlalchemy import Boolean, Column, ForeignKey, Integer, String, DateTime, Text, Enum
+from sqlalchemy import Boolean, Column, ForeignKey, Integer, String, DateTime, Text, Enum, Float
 from sqlalchemy.orm import relationship
 from sqlalchemy.sql import func
 from .database import Base
@@ -103,6 +103,7 @@ class File(Base):
     project = relationship("Project", back_populates="files")
     owner = relationship("User", back_populates="files")
     template = relationship("ConversionTemplate", back_populates="files")
+    conversion_history = relationship("ConversionHistory", back_populates="file")
 
 class ConversionTemplate(Base):
     """Template model for file conversion settings."""
@@ -125,4 +126,27 @@ class ConversionTemplate(Base):
     
     # Relationships
     owner = relationship("User", back_populates="templates")
-    files = relationship("File", back_populates="template") 
+    files = relationship("File", back_populates="template")
+    conversion_history = relationship("ConversionHistory", back_populates="template")
+
+class ConversionHistory(Base):
+    """Model for tracking conversion history and statistics."""
+    __tablename__ = "conversion_history"
+
+    id = Column(Integer, primary_key=True, index=True)
+    file_id = Column(Integer, ForeignKey("files.id"), nullable=False)
+    template_id = Column(Integer, ForeignKey("conversion_templates.id"), nullable=True)
+    source_format = Column(String, nullable=False)
+    target_format = Column(String, nullable=False)
+    started_at = Column(DateTime(timezone=True), server_default=func.now())
+    completed_at = Column(DateTime(timezone=True), nullable=True)
+    duration = Column(Float, nullable=True)  # Duration in seconds
+    success = Column(Boolean, default=False)
+    error_message = Column(String, nullable=True)
+    file_size = Column(Integer, nullable=True)  # Size in bytes
+    memory_usage = Column(Float, nullable=True)  # Memory usage in MB
+    cpu_usage = Column(Float, nullable=True)  # CPU usage percentage
+    
+    # Relationships
+    file = relationship("File", back_populates="conversion_history")
+    template = relationship("ConversionTemplate", back_populates="conversion_history") 

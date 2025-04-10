@@ -7,6 +7,7 @@ import traceback
 import logging
 from flask import jsonify, render_template, request
 from werkzeug.exceptions import HTTPException
+from typing import Dict, Optional
 
 # Configure logger
 logger = logging.getLogger(__name__)
@@ -62,6 +63,72 @@ class RateLimitError(AppError):
     
     def __init__(self, message, payload=None):
         super().__init__(message, status_code=429, payload=payload)
+
+class ApiError(Exception):
+    """Exception raised for API errors."""
+    
+    def __init__(
+        self,
+        message: str,
+        status_code: int,
+        data: Optional[Dict] = None
+    ):
+        """Initialize API error.
+        
+        Args:
+            message: Error message
+            status_code: HTTP status code
+            data: Additional error data
+        """
+        self.message = message
+        self.status_code = status_code
+        self.data = data or {}
+        super().__init__(message)
+    
+    def to_dict(self) -> Dict:
+        """Convert error to dictionary.
+        
+        Returns:
+            Error data as dictionary
+        """
+        return {
+            'message': self.message,
+            'status_code': self.status_code,
+            'data': self.data
+        }
+
+class UiError(Exception):
+    """Exception raised for UI-specific errors."""
+    
+    def __init__(
+        self,
+        message: str,
+        component: str,
+        data: Optional[Dict] = None
+    ):
+        """Initialize UI error.
+        
+        Args:
+            message: Error message
+            component: UI component where error occurred
+            data: Additional error data
+        """
+        self.message = message
+        self.component = component
+        self.data = data or {}
+        super().__init__(message)
+    
+    def to_dict(self) -> Dict:
+        """Convert error to dictionary.
+        
+        Returns:
+            Error data as dictionary
+        """
+        return {
+            'message': self.message,
+            'component': self.component,
+            'data': self.data
+        }
 
 def register_error_handlers(app):
     """Register error handlers with the Flask application."""
@@ -155,4 +222,72 @@ def register_error_handlers(app):
             return response
         else:
             # Web requests return HTML
-            return render_template('errors/500.html'), 500 
+            return render_template('errors/500.html'), 500
+
+def handle_api_error(error: ApiError) -> Dict:
+    """Handle API error and return user-friendly message.
+    
+    Args:
+        error: API error to handle
+        
+    Returns:
+        User-friendly error message
+    """
+    if error.status_code == 400:
+        return {
+            'type': 'warning',
+            'message': 'Invalid request. Please check your input.',
+            'details': error.message
+        }
+    elif error.status_code == 401:
+        return {
+            'type': 'error',
+            'message': 'Authentication required. Please log in.',
+            'details': error.message
+        }
+    elif error.status_code == 403:
+        return {
+            'type': 'error',
+            'message': 'Access denied. You do not have permission.',
+            'details': error.message
+        }
+    elif error.status_code == 404:
+        return {
+            'type': 'warning',
+            'message': 'Resource not found.',
+            'details': error.message
+        }
+    elif error.status_code == 429:
+        return {
+            'type': 'warning',
+            'message': 'Too many requests. Please try again later.',
+            'details': error.message
+        }
+    elif error.status_code >= 500:
+        return {
+            'type': 'error',
+            'message': 'Server error. Please try again later.',
+            'details': error.message
+        }
+    else:
+        return {
+            'type': 'error',
+            'message': 'An unexpected error occurred.',
+            'details': error.message
+        }
+
+def handle_ui_error(error: UiError) -> Dict:
+    """Handle UI error and return user-friendly message.
+    
+    Args:
+        error: UI error to handle
+        
+    Returns:
+        User-friendly error message
+    """
+    return {
+        'type': 'error',
+        'message': error.message,
+        'component': error.component,
+        'details': error.data.get('details', '')
+    } 

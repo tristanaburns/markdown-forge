@@ -11,12 +11,16 @@ from pathlib import Path
 import os
 import logging
 from fastapi.responses import JSONResponse
+from fastapi.dependencies import Depends
+from typing import List, Dict
+from sqlalchemy.orm import Session
+from sqlalchemy import func
 
-from .routers import files, web, conversion, auth, projects, templates
+from .routers import files, web, conversion, auth, projects, templates, logging as logging_router
 from .utils.error_handler import register_error_handlers
 from .utils.api_docs import custom_openapi, generate_api_docs
 from .core.config import settings
-from .core.logging import setup_logging
+from .utils.logger import setup_logging
 from .services.conversion_queue import ConversionQueue
 from .database import engine, Base
 
@@ -112,6 +116,7 @@ app.include_router(conversion.router, prefix="/api/v1")
 app.include_router(auth.router, prefix="/api/v1")
 app.include_router(projects.router, prefix="/api/v1")
 app.include_router(templates.router, prefix="/api/v1")
+app.include_router(logging_router.router, prefix="/api/v1")
 
 # Register error handlers
 register_error_handlers(app)
@@ -183,6 +188,69 @@ async def root():
         "description": "Markdown Forge API for converting markdown files to various formats",
         "docs": "/docs",
         "redoc": "/redoc",
+    }
+
+@app.get("/api/files/{file_id}/history")
+async def get_file_conversion_history(
+    file_id: int,
+    db: Session = Depends(get_db)
+) -> List[Dict]:
+    """
+    Get conversion history for a specific file.
+    
+    Args:
+        file_id: ID of the file
+        db: Database session
+        
+    Returns:
+        List of conversion history records
+    """
+    queue = ConversionQueue(db)
+    return queue.get_file_history(file_id)
+
+@app.get("/api/conversion/stats")
+async def get_conversion_stats(
+    db: Session = Depends(get_db)
+) -> Dict:
+    """
+    Get overall conversion statistics.
+    
+    Args:
+        db: Database session
+        
+    Returns:
+        Dict containing conversion statistics
+    """
+    # Get total conversions
+    total = db.query(ConversionHistory).count()
+    
+    # Get successful conversions
+    successful = db.query(ConversionHistory).filter(
+        ConversionHistory.success == True
+    ).count()
+    
+    # Get failed conversions
+    failed = db.query(ConversionHistory).filter(
+        ConversionHistory.success == False
+    ).count()
+    
+    # Get average duration
+    avg_duration = db.query(func.avg(ConversionHistory.duration)).scalar()
+    
+    # Get average memory usage
+    avg_memory = db.query(func.avg(ConversionHistory.memory_usage)).scalar()
+    
+    # Get average CPU usage
+    avg_cpu = db.query(func.avg(ConversionHistory.cpu_usage)).scalar()
+    
+    return {
+        "total_conversions": total,
+        "successful_conversions": successful,
+        "failed_conversions": failed,
+        "success_rate": (successful / total * 100) if total > 0 else 0,
+        "average_duration": avg_duration,
+        "average_memory_usage": avg_memory,
+        "average_cpu_usage": avg_cpu
     }
 
 if __name__ == "__main__":

@@ -1,14 +1,26 @@
 # Markdown Forge - Frontend Application
 
-This directory contains the frontend application for Markdown Forge, built with Flask and Bootstrap.
+This directory contains the autonomous frontend application for Markdown Forge, built with Flask and Bootstrap.
+
+## Frontend Autonomy Principles
+
+The frontend application follows these key principles:
+
+- **Independent Operation**: The UI functions as a standalone application that operates independently from the backend.
+- **API-Only Communication**: All interaction with the backend occurs exclusively through well-defined API endpoints.
+- **No Direct Backend Dependencies**: The frontend code has no direct dependencies on backend code or implementation details.
+- **Self-Contained State Management**: UI state is managed entirely within the frontend application.
+- **Independent Testing**: The frontend can be tested in isolation using mock API responses.
+- **Separate Deployment**: The frontend can be deployed independently from the backend.
 
 ## Overview
 
 The frontend application provides a modern, responsive web interface for:
 - Uploading Markdown files
-- Converting files to various formats (HTML, PDF, DOCX, PNG)
+- Converting files to various formats (HTML, PDF, DOCX, PNG, CSV, XLSX)
 - Managing converted files
 - Previewing converted content
+- Monitoring conversion history and system metrics
 
 ## Directory Structure
 
@@ -16,17 +28,28 @@ The frontend application provides a modern, responsive web interface for:
 app/
 ├── static/            # Static assets
 │   ├── css/          # CSS stylesheets
+│   │   ├── components/ # Component-specific styles
+│   │   └── conversion_history.css # Styles for conversion history page
 │   ├── js/           # JavaScript files
+│   │   ├── components/ # Component-specific scripts
+│   │   ├── utils/     # Utility scripts
+│   │   └── conversion_history.js # Scripts for conversion history page
 │   └── img/          # Images and icons
 ├── templates/         # Jinja2 templates
 │   ├── base.html     # Base template with common elements
 │   ├── upload.html   # File upload page
 │   ├── files.html    # File management page
 │   ├── preview.html  # File preview page
+│   ├── conversion_history.html # Conversion history dashboard
 │   └── components/   # Reusable template components
 ├── views/             # Standalone HTML views
 ├── services/          # Frontend services
 ├── utils/             # Frontend utilities
+│   └── config.py     # Configuration management
+├── routes/            # Route definitions
+├── middleware/        # Request/response middleware
+├── models/            # Frontend data models
+├── controllers/       # Request handlers
 └── main.py            # Flask application entry point
 ```
 
@@ -55,13 +78,14 @@ The application uses environment variables for configuration. Key configuration 
 
 - `.env`: Contains environment-specific configuration values
 - `.env.example`: Template for required environment variables
+- `utils/config.py`: Configuration management with dataclasses
 
 ### Required Environment Variables
 
 - `FLASK_APP`: Path to the Flask application
 - `FLASK_ENV`: Environment (development, production)
 - `FLASK_DEBUG`: Debug mode (0, 1)
-- `API_BASE_URL`: URL of the backend API
+- `API_BASE_URL`: URL of the backend API (the only connection to the backend)
 - `SECRET_KEY`: Secret key for Flask session
 
 ## Running the Application
@@ -81,18 +105,78 @@ flask run --debug
 - Multiple file selection
 - File type validation
 - Progress tracking
+- Batch upload support
+  - Configurable batch size (5, 10, 20, or all files)
+  - Multiple output format selection
+  - Batch progress monitoring
+  - Per-file status tracking
+- Concurrent processing
 
 ### File Management
 - List all uploaded files
 - Preview converted files
 - Download converted files
 - Delete files
+- Batch operations
+- Real-time status updates
 
 ### File Preview
 - Syntax highlighting for code blocks
 - MathJax for mathematical expressions
 - Mermaid for diagrams
 - Responsive layout
+- Dark mode support
+- Custom template support
+
+### Conversion History
+- Comprehensive dashboard displaying conversion activities
+- Queue statistics showing pending, active, completed, and failed conversions
+- Active conversions monitoring with real-time progress indicators
+- System metrics visualization (CPU, memory, disk usage, uptime)
+- Detailed conversion history log with timestamps and durations
+- Search and filter capabilities by filename, format, or status
+- Export history to CSV for reporting and analysis
+- Actions for each history item (download, retry, view details, remove)
+- Pagination for efficient browsing of large history datasets
+- Responsive design that works on all device sizes
+
+### Performance
+- Batch processing
+- Concurrent conversions
+- Memory optimization
+- Resource cleanup
+- Status monitoring
+- Progress tracking
+
+### Batch Processing
+The application includes robust batch processing capabilities:
+
+- **Multiple File Selection**: Upload multiple files simultaneously through drag-and-drop or file browser.
+- **Batch Configuration**: Set batch size to control processing load (5, 10, 20, or all files at once).
+- **Multiple Output Formats**: Select multiple output formats for each file in the batch (HTML, PDF, DOCX, PNG).
+- **Status Tracking**: Monitor both overall batch progress and individual file status.
+- **Concurrent Processing**: Files within a batch are processed in parallel for optimal performance.
+- **Error Handling**: Robust error handling for individual files, allowing the batch to continue even if some files fail.
+
+#### Usage
+
+1. Navigate to the upload page
+2. Drag and drop multiple Markdown files or use the file browser
+3. Configure batch processing options:
+   - Set batch size
+   - Select output formats
+   - Choose conversion options
+4. Click "Upload and Convert"
+5. Monitor progress in real-time
+6. View and download results when processing completes
+
+#### API Endpoints
+
+The batch processing functionality uses the following API endpoints:
+
+- `POST /api/convert`: Convert a single file with support for multiple output formats
+- `POST /api/convert/batch`: Process multiple files with support for batching
+- `GET /api/convert/status`: Get the current status of the conversion queue
 
 ## Development
 
@@ -115,15 +199,47 @@ Run tests with:
 pytest
 ```
 
+### Performance Testing
+
+Run performance tests with:
+```bash
+pytest performance/
+```
+
+### Security Testing
+
+Run security tests with:
+```bash
+pytest security/
+```
+
 ## Integration with Backend
 
-The frontend communicates with the backend via REST API:
+The frontend communicates with the backend via REST API endpoints **only**. No direct code dependencies exist between the frontend and backend implementations.
+
+### API Contract
 
 - File upload: `POST /api/v1/files/upload`
 - File listing: `GET /api/v1/files`
 - File conversion: `POST /api/v1/convert`
 - File download: `GET /api/v1/convert/{id}/download`
 - File deletion: `DELETE /api/v1/files/{id}`
+- Template management: `GET/POST/PUT/DELETE /api/v1/templates`
+- Queue status: `GET /api/v1/convert/queue/status`
+- Conversion history: `GET /api/v1/convert/history`
+- Clear history: `POST /api/v1/convert/history/clear`
+- Remove history item: `DELETE /api/v1/convert/history/{id}`
+- Retry conversion: `POST /api/v1/convert/{id}/retry`
+- Cancel conversion: `POST /api/v1/convert/{id}/cancel`
+
+### Error Handling for API Communication
+
+The frontend implements comprehensive error handling for API communication:
+- Network error detection and recovery
+- API response validation
+- Graceful degradation when the API is unavailable
+- Retry mechanisms with exponential backoff
+- User-friendly error messages
 
 ## Error Handling
 
@@ -132,6 +248,8 @@ The application uses a standardized error handling approach:
 - Logging of errors
 - Graceful degradation
 - Retry mechanisms for API calls
+- Error recovery strategies
+- Real-time error notifications
 
 ## Logging
 
@@ -140,4 +258,16 @@ Logging is configured in `utils/logger.py`. Log levels:
 - INFO: General operational information
 - WARNING: Warning messages for potentially problematic situations
 - ERROR: Error messages for serious problems
-- CRITICAL: Critical messages for fatal errors 
+- CRITICAL: Critical messages for fatal errors
+
+## Performance Monitoring
+
+The application includes performance monitoring:
+- Batch processing metrics
+- Concurrent task tracking
+- Memory usage monitoring
+- Resource cleanup status
+- Queue performance metrics
+- API response times
+- Conversion history statistics
+- System resource utilization (CPU, memory, disk) 

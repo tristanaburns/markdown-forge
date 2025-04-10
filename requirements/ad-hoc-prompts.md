@@ -1,9 +1,15 @@
 # Markdown Forge - Development Instructions
 
-## Actions for AI Assistantv
+## Actions for AI Assistant
 
 # Pre-requisite
-Before starting any development work, thoroughly review the current entire chat history and previous chat histories to ensure you understand the context and the progress of the project. This step is mandatory to maintain consistency and avoid duplication of effort.
+Before starting any development work, thoroughly review the current entire chat history and previous chat histories to ensure you understand the context and the progress of the project. This step is mandatory to maintain consistency and avoid duplication of effort. Then, review the following files:
+- `@project-requirements.md`
+-  `@project-plan.md`
+- `@README.md`
+- `@/app/README.md`
+- `@/backend/README.md`
+
 
 1. Continue executing the tasks and instructions in the `@project-plan.md` file, following the defined phases and implementation steps.
 
@@ -41,3 +47,9 @@ Before starting any development work, thoroughly review the current entire chat 
    - API documentation if applicable
    - Contribution guidelines and development setup instructions
    - License information and acknowledgments
+
+
+9. Update all the README.md files in all the directories to ensure that they are upto date and the file structure is correct,
+
+10. Update the `@project-plan.md` and `@project-requirements.md` to ensure they are up to date and align with the readme.md files and the file structure is correct.
+

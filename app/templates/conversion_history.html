@@ -1,0 +1,214 @@
+{% extends "base.html" %}
+
+{% block title %}Conversion History - Markdown Forge{% endblock %}
+
+{% block head %}
+{{ super() }}
+<link rel="stylesheet" href="{{ url_for('static', filename='css/conversion_history.css') }}">
+{% endblock %}
+
+{% block content %}
+<div class="container my-4">
+    <h1 class="text-center mb-4">Conversion Dashboard</h1>
+    
+    <!-- Alert Container -->
+    <div id="alertContainer" class="alert-container"></div>
+    
+    <!-- Queue Statistics -->
+    <div class="row mb-4">
+        <div class="col-md-3">
+            <div class="queue-stats">
+                <h5>Queue Size</h5>
+                <p class="stat-value" id="queueSize">0</p>
+            </div>
+        </div>
+        <div class="col-md-3">
+            <div class="queue-stats">
+                <h5>Completed</h5>
+                <p class="stat-value" id="completedCount">0</p>
+            </div>
+        </div>
+        <div class="col-md-3">
+            <div class="queue-stats">
+                <h5>Failed</h5>
+                <p class="stat-value" id="failedCount">0</p>
+            </div>
+        </div>
+        <div class="col-md-3">
+            <div class="queue-stats">
+                <h5>Active</h5>
+                <p class="stat-value" id="activeCount">0</p>
+            </div>
+        </div>
+    </div>
+    
+    <!-- Queue Status -->
+    <div class="row mb-4">
+        <div class="col-12">
+            <div class="card">
+                <div class="card-header d-flex justify-content-between align-items-center">
+                    <h5 class="mb-0">Queue Status</h5>
+                    <span id="queueStatusLabel" class="badge bg-success">Idle</span>
+                </div>
+                <div class="card-body">
+                    <div class="progress">
+                        <div id="queueStatus" class="progress-bar bg-success" role="progressbar" style="width: 0%"></div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+    
+    <!-- Active Conversions -->
+    <div class="row mb-4">
+        <div class="col-12">
+            <div class="card">
+                <div class="card-header">
+                    <h5 class="mb-0">Active Conversions</h5>
+                </div>
+                <div class="card-body">
+                    <div class="table-responsive">
+                        <table class="table table-hover">
+                            <thead>
+                                <tr>
+                                    <th>File Name</th>
+                                    <th>Conversion</th>
+                                    <th>Progress</th>
+                                    <th>Started</th>
+                                    <th>Actions</th>
+                                </tr>
+                            </thead>
+                            <tbody id="activeConversionsBody">
+                                <tr>
+                                    <td colspan="5" class="text-center">No active conversions</td>
+                                </tr>
+                            </tbody>
+                        </table>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+    
+    <!-- System Metrics -->
+    <div class="row mb-4">
+        <div class="col-12">
+            <div class="card">
+                <div class="card-header">
+                    <h5 class="mb-0">System Metrics</h5>
+                </div>
+                <div class="card-body">
+                    <div class="row">
+                        <div class="col-md-4 mb-3">
+                            <label>CPU Usage</label>
+                            <div class="progress mb-1">
+                                <div id="cpuProgress" class="progress-bar bg-primary" role="progressbar" style="width: 0%"></div>
+                            </div>
+                            <small class="text-muted" id="cpuValue">0%</small>
+                        </div>
+                        
+                        <div class="col-md-4 mb-3">
+                            <label>Memory Usage</label>
+                            <div class="progress mb-1">
+                                <div id="memoryProgress" class="progress-bar bg-primary" role="progressbar" style="width: 0%"></div>
+                            </div>
+                            <small class="text-muted" id="memoryValue">0 MB (0%)</small>
+                        </div>
+                        
+                        <div class="col-md-4 mb-3">
+                            <label>Disk Usage</label>
+                            <div class="progress mb-1">
+                                <div id="diskProgress" class="progress-bar bg-primary" role="progressbar" style="width: 0%"></div>
+                            </div>
+                            <small class="text-muted" id="diskValue">0 GB (0%)</small>
+                        </div>
+                    </div>
+                    
+                    <div class="row mt-3">
+                        <div class="col-md-4 mb-3">
+                            <label>Bandwidth Usage</label>
+                            <p class="mb-0" id="bandwidthValue">0 Mbps</p>
+                        </div>
+                        
+                        <div class="col-md-4 mb-3">
+                            <label>API Requests</label>
+                            <p class="mb-0" id="requestsCount">0</p>
+                        </div>
+                        
+                        <div class="col-md-4 mb-3">
+                            <label>Avg Response Time</label>
+                            <p class="mb-0" id="avgResponseTime">0 ms</p>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+    
+    <!-- Conversion History -->
+    <div class="row">
+        <div class="col-12">
+            <div class="card">
+                <div class="card-header d-flex justify-content-between align-items-center">
+                    <h5 class="card-title mb-0">Conversion History</h5>
+                    <div class="d-flex">
+                        <div class="input-group me-2">
+                            <input type="text" class="form-control" id="historySearch" placeholder="Search...">
+                            <button class="btn btn-outline-secondary" type="button" id="searchBtn">
+                                <i class="fas fa-search"></i>
+                            </button>
+                        </div>
+                        <div class="dropdown me-2">
+                            <select class="form-select" id="statusFilter">
+                                <option value="all">All Status</option>
+                                <option value="completed">Completed</option>
+                                <option value="failed">Failed</option>
+                                <option value="processing">Processing</option>
+                            </select>
+                        </div>
+                        <button class="btn btn-outline-primary me-2" id="refreshBtn">
+                            <i class="fas fa-sync-alt"></i>
+                        </button>
+                        <button class="btn btn-outline-success me-2" id="exportBtn">
+                            <i class="fas fa-download"></i> Export
+                        </button>
+                        <button class="btn btn-outline-danger" id="clearBtn">
+                            <i class="fas fa-trash"></i> Clear
+                        </button>
+                    </div>
+                </div>
+                <div class="card-body">
+                    <div class="table-responsive">
+                        <table class="table table-hover">
+                            <thead>
+                                <tr>
+                                    <th>File Name</th>
+                                    <th>Format</th>
+                                    <th>Timestamp</th>
+                                    <th>Duration</th>
+                                    <th>Status</th>
+                                    <th>Actions</th>
+                                </tr>
+                            </thead>
+                            <tbody id="historyTableBody">
+                                <!-- History items will be populated here -->
+                            </tbody>
+                        </table>
+                    </div>
+                </div>
+                <div class="card-footer">
+                    <nav aria-label="Conversion history pagination">
+                        <div id="historyPagination" class="pagination-container"></div>
+                    </nav>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+{% endblock %}
+
+{% block scripts %}
+{{ super() }}
+<script src="{{ url_for('static', filename='js/conversion_history.js') }}"></script>
+{% endblock %} 
+{% endblock %} 

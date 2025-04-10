@@ -1,19 +1,33 @@
 /**
  * @file upload.js
- * @description Handles file upload functionality for the Markdown Forge application
+ * @description Handles batch file upload functionality for the Markdown Forge application
  * @module upload
  */
 
 // DOM Elements
 const dropZone = document.getElementById('dropZone');
 const fileInput = document.getElementById('fileInput');
-const fileList = document.getElementById('fileList');
+const filesList = document.getElementById('filesList');
+const filesTableBody = document.getElementById('filesTableBody');
 const uploadForm = document.getElementById('uploadForm');
-const uploadButton = document.getElementById('uploadButton');
+const submitBtn = document.getElementById('submitBtn');
+const clearAllBtn = document.getElementById('clearAllBtn');
+const batchProgress = document.getElementById('batchProgress');
+const batchProgressBar = document.getElementById('batchProgressBar');
+const batchProgressPercent = document.getElementById('batchProgressPercent');
+const batchSizeSelect = document.getElementById('batchSize');
+
+// Format checkboxes
+const formatHTML = document.getElementById('formatHTML');
+const formatPDF = document.getElementById('formatPDF');
+const formatDOCX = document.getElementById('formatDOCX');
+const formatPNG = document.getElementById('formatPNG');
 
 // State
 let files = [];
-let progressTracker;
+let uploadedFiles = 0;
+let totalFiles = 0;
+let activeBatch = false;
 
 /**
  * Initializes the upload page
@@ -21,7 +35,6 @@ let progressTracker;
  */
 function init() {
     setupEventListeners();
-    progressTracker = createProgressTracker();
 }
 
 /**
@@ -39,6 +52,9 @@ function setupEventListeners() {
     
     // Form submission
     uploadForm.addEventListener('submit', handleFormSubmit);
+    
+    // Clear all files
+    clearAllBtn.addEventListener('click', clearAllFiles);
 }
 
 /**
@@ -85,6 +101,9 @@ function handleDrop(e) {
 function handleFileSelect(e) {
     const selectedFiles = Array.from(e.target.files);
     processFiles(selectedFiles);
+    
+    // Reset file input
+    fileInput.value = '';
 }
 
 /**
@@ -93,63 +112,160 @@ function handleFileSelect(e) {
  * @param {File[]} newFiles - Array of files to process
  */
 async function processFiles(newFiles) {
-    // Validate files
-    const { validFiles, invalidFiles } = await validateFiles(newFiles);
-    
-    // Show errors for invalid files
-    if (invalidFiles.length > 0) {
-        invalidFiles.forEach(({ file, error }) => {
-            showError(`Invalid file: ${file.name} - ${error}`, 'warning');
-        });
-    }
-    
-    if (validFiles.length === 0) {
+    if (activeBatch) {
+        showError('Please wait for the current batch to complete before adding more files', 'warning');
         return;
     }
     
+    // Filter markdown files
+    const markdownFiles = newFiles.filter(file => {
+        const extension = file.name.split('.').pop().toLowerCase();
+        return ['md', 'markdown', 'mdown'].includes(extension);
+    });
+    
+    // Check for non-markdown files
+    if (markdownFiles.length < newFiles.length) {
+        showError('Some files were skipped. Only Markdown files (.md, .markdown, .mdown) are allowed', 'warning');
+    }
+    
+    if (markdownFiles.length === 0) {
+        return;
+    }
+    
+    // Add files with status
+    const newFilesWithStatus = markdownFiles.map(file => ({
+        file,
+        id: generateFileId(file),
+        status: 'ready', // ready, uploading, success, error
+        message: '',
+        formats: []
+    }));
+    
     // Add to files array
-    files = [...files, ...validFiles];
+    files = [...files, ...newFilesWithStatus];
     
     // Update UI
-    updateFileList();
-    updateUploadButton();
+    updateFilesList();
+    updateSubmitButton();
 }
 
 /**
- * Updates the file list display
- * @function updateFileList
+ * Generates a unique file ID
+ * @function generateFileId
+ * @param {File} file - The file to generate an ID for
+ * @returns {string} - A unique file ID
  */
-function updateFileList() {
-    fileList.innerHTML = '';
+function generateFileId(file) {
+    return `file_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`;
+}
+
+/**
+ * Updates the files list display
+ * @function updateFilesList
+ */
+function updateFilesList() {
+    filesTableBody.innerHTML = '';
     
     if (files.length === 0) {
+        filesList.classList.add('d-none');
         return;
     }
     
-    const ul = document.createElement('ul');
-    ul.className = 'list-group';
+    filesList.classList.remove('d-none');
     
-    files.forEach((file, index) => {
-        const li = document.createElement('li');
-        li.className = 'list-group-item d-flex justify-content-between align-items-center';
+    files.forEach((fileData, index) => {
+        const tr = document.createElement('tr');
         
-        const fileInfo = document.createElement('div');
-        fileInfo.innerHTML = `
-            <span class="fw-bold">${escapeHtml(file.name)}</span>
-            <span class="badge bg-secondary rounded-pill ms-2">${formatFileSize(file.size)}</span>
-        `;
+        // File name
+        const nameTd = document.createElement('td');
+        nameTd.textContent = fileData.file.name;
         
-        const removeButton = document.createElement('button');
-        removeButton.className = 'btn btn-sm btn-outline-danger';
-        removeButton.innerHTML = '<i class="bi bi-x"></i>';
-        removeButton.addEventListener('click', () => removeFile(index));
+        // File size
+        const sizeTd = document.createElement('td');
+        sizeTd.textContent = formatFileSize(fileData.file.size);
         
-        li.appendChild(fileInfo);
-        li.appendChild(removeButton);
-        ul.appendChild(li);
+        // Status
+        const statusTd = document.createElement('td');
+        const statusBadge = document.createElement('span');
+        statusBadge.className = `badge ${getStatusBadgeClass(fileData.status)}`;
+        statusBadge.textContent = getStatusText(fileData.status);
+        statusTd.appendChild(statusBadge);
+        
+        if (fileData.message) {
+            const statusMessage = document.createElement('small');
+            statusMessage.className = 'd-block text-muted mt-1';
+            statusMessage.textContent = fileData.message;
+            statusTd.appendChild(statusMessage);
+        }
+        
+        // Actions
+        const actionsTd = document.createElement('td');
+        
+        if (fileData.status !== 'uploading') {
+            const removeButton = document.createElement('button');
+            removeButton.className = 'btn btn-sm btn-outline-danger';
+            removeButton.innerHTML = '<i class="fas fa-times"></i>';
+            removeButton.addEventListener('click', () => removeFile(index));
+            actionsTd.appendChild(removeButton);
+        }
+        
+        if (fileData.status === 'success' && fileData.formats.length > 0) {
+            const viewButton = document.createElement('a');
+            viewButton.className = 'btn btn-sm btn-outline-primary ms-1';
+            viewButton.href = `/preview/${fileData.id}`;
+            viewButton.innerHTML = '<i class="fas fa-eye"></i>';
+            actionsTd.appendChild(viewButton);
+        }
+        
+        tr.appendChild(nameTd);
+        tr.appendChild(sizeTd);
+        tr.appendChild(statusTd);
+        tr.appendChild(actionsTd);
+        
+        filesTableBody.appendChild(tr);
     });
-    
-    fileList.appendChild(ul);
+}
+
+/**
+ * Gets the appropriate status badge class
+ * @function getStatusBadgeClass
+ * @param {string} status - The file status
+ * @returns {string} - The badge class
+ */
+function getStatusBadgeClass(status) {
+    switch (status) {
+        case 'ready':
+            return 'bg-secondary';
+        case 'uploading':
+            return 'bg-primary';
+        case 'success':
+            return 'bg-success';
+        case 'error':
+            return 'bg-danger';
+        default:
+            return 'bg-secondary';
+    }
+}
+
+/**
+ * Gets the status text
+ * @function getStatusText
+ * @param {string} status - The file status
+ * @returns {string} - The status text
+ */
+function getStatusText(status) {
+    switch (status) {
+        case 'ready':
+            return 'Ready';
+        case 'uploading':
+            return 'Uploading';
+        case 'success':
+            return 'Success';
+        case 'error':
+            return 'Error';
+        default:
+            return 'Unknown';
+    }
 }
 
 /**
@@ -158,17 +274,46 @@ function updateFileList() {
  * @param {number} index - Index of the file to remove
  */
 function removeFile(index) {
+    if (activeBatch) {
+        showError('Cannot remove files during active upload', 'warning');
+        return;
+    }
+    
     files.splice(index, 1);
-    updateFileList();
-    updateUploadButton();
+    updateFilesList();
+    updateSubmitButton();
 }
 
 /**
- * Updates the upload button state
- * @function updateUploadButton
+ * Clears all files from the list
+ * @function clearAllFiles
  */
-function updateUploadButton() {
-    uploadButton.disabled = files.length === 0;
+function clearAllFiles() {
+    if (activeBatch) {
+        showError('Cannot clear files during active upload', 'warning');
+        return;
+    }
+    
+    files = [];
+    updateFilesList();
+    updateSubmitButton();
+}
+
+/**
+ * Updates the submit button state
+ * @function updateSubmitButton
+ */
+function updateSubmitButton() {
+    submitBtn.disabled = files.length === 0 || activeBatch || !isAnyFormatSelected();
+}
+
+/**
+ * Checks if any output format is selected
+ * @function isAnyFormatSelected
+ * @returns {boolean} - True if at least one format is selected
+ */
+function isAnyFormatSelected() {
+    return formatHTML.checked || formatPDF.checked || formatDOCX.checked || formatPNG.checked;
 }
 
 /**
@@ -184,29 +329,103 @@ async function handleFormSubmit(e) {
         return;
     }
     
-    // Get selected formats
-    const formatCheckboxes = document.querySelectorAll('input[name="formats"]:checked');
-    const formats = Array.from(formatCheckboxes).map(cb => cb.value);
-    
-    if (formats.length === 0) {
+    if (!isAnyFormatSelected()) {
         showError('Please select at least one output format');
         return;
     }
     
-    // Check if Pandoc should be used
-    const usePandoc = document.getElementById('usePandocToggle')?.checked || false;
+    // Get selected formats
+    const selectedFormats = [];
+    if (formatHTML.checked) selectedFormats.push('html');
+    if (formatPDF.checked) selectedFormats.push('pdf');
+    if (formatDOCX.checked) selectedFormats.push('docx');
+    if (formatPNG.checked) selectedFormats.push('png');
     
-    // Initialize progress tracker
-    progressTracker.init(files.length, files.map(file => `Uploading ${file.name}`));
+    // Get batch size
+    let batchSize = parseInt(batchSizeSelect.value, 10);
+    if (isNaN(batchSize) || batchSizeSelect.value === 'all') {
+        batchSize = files.length;
+    }
+    
+    // Check if Pandoc should be used
+    const usePandoc = document.getElementById('usePandoc').checked;
+    
+    // Set active batch
+    activeBatch = true;
+    uploadedFiles = 0;
+    totalFiles = files.length;
+    
+    // Update UI
+    updateSubmitButton();
+    
+    // Show batch progress
+    batchProgress.classList.remove('d-none');
+    batchProgressBar.style.width = '0%';
+    batchProgressPercent.textContent = '0%';
+    
+    // Get ready files
+    const filesToUpload = files.filter(f => f.status === 'ready' || f.status === 'error');
+    
+    // Process files in batches
+    try {
+        // Create batches
+        const batches = [];
+        for (let i = 0; i < filesToUpload.length; i += batchSize) {
+            batches.push(filesToUpload.slice(i, i + batchSize));
+        }
+        
+        // Process each batch sequentially
+        for (let i = 0; i < batches.length; i++) {
+            const batch = batches[i];
+            await processFileBatch(batch, selectedFormats, usePandoc);
+        }
+        
+        // Upload completed
+        showError('All uploads completed successfully!', 'success');
+        
+    } catch (error) {
+        console.error('Upload error:', error);
+        showError(error.message || 'An error occurred during upload');
+    } finally {
+        // Set active batch to false
+        activeBatch = false;
+        updateSubmitButton();
+    }
+}
+
+/**
+ * Processes a batch of files
+ * @function processFileBatch
+ * @param {Array} batch - The batch of files to process
+ * @param {Array} formats - The selected formats
+ * @param {boolean} usePandoc - Whether to use Pandoc
+ */
+async function processFileBatch(batch, formats, usePandoc) {
+    // Process files in parallel within the batch
+    const promises = batch.map(fileData => processFile(fileData, formats, usePandoc));
+    
+    // Wait for all files in the batch to complete
+    await Promise.all(promises);
+    
+    // Return batch completion
+    return true;
+}
+
+/**
+ * Processes a single file
+ * @function processFile
+ * @param {Object} fileData - The file data object
+ * @param {Array} formats - The selected formats
+ * @param {boolean} usePandoc - Whether to use Pandoc
+ */
+async function processFile(fileData, formats, usePandoc) {
+    // Update file status
+    updateFileStatus(fileData.id, 'uploading');
     
     try {
         // Create FormData
         const formData = new FormData();
-        
-        // Add files
-        files.forEach(file => {
-            formData.append('files', file);
-        });
+        formData.append('file', fileData.file);
         
         // Add formats
         formats.forEach(format => {
@@ -216,63 +435,125 @@ async function handleFormSubmit(e) {
         // Add Pandoc flag
         formData.append('usePandoc', usePandoc);
         
-        // Send request with progress tracking
-        const result = await trackUploadProgress('/api/upload', {
+        // Send request
+        const response = await fetch('/api/convert', {
             method: 'POST',
             body: formData
-        }, progressTracker);
+        });
         
-        // Show success message
-        progressTracker.complete('Upload successful! Redirecting...');
-        showError('Upload successful! Redirecting...', 'success');
+        if (!response.ok) {
+            const error = await response.json();
+            throw new Error(error.message || 'Upload failed');
+        }
         
-        // Redirect to files page
-        setTimeout(() => {
-            window.location.href = '/files';
-        }, 1500);
+        const result = await response.json();
+        
+        // Update file status
+        updateFileStatus(fileData.id, 'success', 'Conversion successful', formats);
+        
+        // Increment uploaded files
+        uploadedFiles++;
+        updateBatchProgress();
+        
+        return result;
         
     } catch (error) {
-        console.error('Upload error:', error);
-        showError(error.message || 'An error occurred during upload');
-        progressTracker.hide();
+        console.error(`Error processing file ${fileData.file.name}:`, error);
+        updateFileStatus(fileData.id, 'error', error.message || 'Upload failed');
+        
+        // Increment uploaded files (even if error)
+        uploadedFiles++;
+        updateBatchProgress();
+        
+        throw error;
     }
+}
+
+/**
+ * Updates a file's status
+ * @function updateFileStatus
+ * @param {string} fileId - The file ID
+ * @param {string} status - The new status
+ * @param {string} message - Optional status message
+ * @param {Array} formats - Optional formats array
+ */
+function updateFileStatus(fileId, status, message = '', formats = []) {
+    const fileIndex = files.findIndex(f => f.id === fileId);
+    if (fileIndex !== -1) {
+        files[fileIndex].status = status;
+        files[fileIndex].message = message;
+        if (formats.length > 0) {
+            files[fileIndex].formats = formats;
+        }
+        updateFilesList();
+    }
+}
+
+/**
+ * Updates the batch progress
+ * @function updateBatchProgress
+ */
+function updateBatchProgress() {
+    const progress = (uploadedFiles / totalFiles) * 100;
+    batchProgressBar.style.width = `${progress}%`;
+    batchProgressPercent.textContent = `${Math.round(progress)}%`;
 }
 
 /**
  * Shows an error message
  * @function showError
  * @param {string} message - The error message to display
+ * @param {string} type - The message type (danger, warning, success)
  */
 function showError(message, type = 'danger') {
-    // Use the global showError function from error.js
-    window.showError(message, type);
+    const alertContainer = document.getElementById('alertContainer') || createAlertContainer();
+    
+    const alert = document.createElement('div');
+    alert.className = `alert alert-${type} alert-dismissible fade show`;
+    alert.innerHTML = `
+        ${message}
+        <button type="button" class="btn-close" data-bs-dismiss="alert" aria-label="Close"></button>
+    `;
+    
+    alertContainer.appendChild(alert);
+    
+    // Auto dismiss after 5 seconds for non-error alerts
+    if (type !== 'danger') {
+        setTimeout(() => {
+            alert.remove();
+        }, 5000);
+    }
 }
 
 /**
- * Formats file size in bytes to a human-readable string
+ * Creates an alert container
+ * @function createAlertContainer
+ * @returns {HTMLElement} - The alert container
+ */
+function createAlertContainer() {
+    const container = document.createElement('div');
+    container.id = 'alertContainer';
+    container.className = 'position-fixed top-0 end-0 p-3';
+    container.style.zIndex = '1050';
+    document.body.appendChild(container);
+    return container;
+}
+
+/**
+ * Formats file size in a human-readable format
  * @function formatFileSize
- * @param {number} bytes - File size in bytes
- * @returns {string} - Formatted file size
+ * @param {number} bytes - The file size in bytes
+ * @returns {string} - The formatted file size
  */
 function formatFileSize(bytes) {
-    // Use the global formatFileSize function from file-validation.js
-    return window.formatFileSize(bytes);
+    if (bytes === 0) return '0 Bytes';
+    
+    const k = 1024;
+    const sizes = ['Bytes', 'KB', 'MB', 'GB', 'TB'];
+    const i = Math.floor(Math.log(bytes) / Math.log(k));
+    
+    return parseFloat((bytes / Math.pow(k, i)).toFixed(2)) + ' ' + sizes[i];
 }
 
-/**
- * Escapes HTML special characters
- * @function escapeHtml
- * @param {string} unsafe - The string to escape
- * @returns {string} - Escaped string
- */
-function escapeHtml(unsafe) {
-    return unsafe
-        .replace(/&/g, "&amp;")
-        .replace(/</g, "&lt;")
-        .replace(/>/g, "&gt;")
-        .replace(/"/g, "&quot;")
-        .replace(/'/g, "&#039;");
-}
-
-// Initialize the upload page
+// Initialize on page load
 document.addEventListener('DOMContentLoaded', init); 

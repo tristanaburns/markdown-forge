@@ -1,297 +1,293 @@
 # Markdown Forge
 
-A modern web application for converting Markdown files to various formats, built with Flask (frontend) and FastAPI (backend).
+A modern, high-performance document conversion platform with component-based architecture that transforms Markdown files into multiple formats with advanced features for enterprise and personal use.
+
+## Purpose & Vision
+
+Markdown Forge is designed to solve the challenges of document conversion at scale. It provides a reliable, efficient, and feature-rich platform for converting Markdown documents into various formats while maintaining document integrity and styling. The project aims to:
+
+- Enable seamless conversion between Markdown and multiple document formats
+- Process conversions efficiently at scale with performance optimization
+- Provide a modern, responsive interface for document management
+- Offer powerful API access for integration with other systems
+- Maintain high reliability with comprehensive error handling and recovery
+- Support enterprise requirements with monitoring, metrics, and security features
+
+## Architecture Philosophy
+
+Markdown Forge follows a component-based architecture with strict separation of concerns:
+
+- **Frontend and Backend Autonomy**: The UI (Flask application) and API (FastAPI application) function as independent systems
+- **API-Only Communication**: Frontend interacts with backend exclusively through well-defined REST endpoints
+- **Independent Development Lifecycle**: Components can be developed, tested, and deployed separately
+- **Clear Interface Boundaries**: All component communication follows defined API contracts
+
+## Key Features
+
+### Conversion Capabilities
+- **Multiple Format Support**: Convert to HTML, PDF, DOCX, PNG, CSV, XLSX
+- **Bidirectional Conversion**: Both Markdown-to-format and format-to-Markdown conversions 
+- **Template System**: Customize output with configurable templates
+- **Batch Processing**: Process multiple files concurrently with configurable batch size
+- **Custom Formatting**: Control conversion options and styling
+
+### Performance & Scalability
+- **Concurrent Processing**: Process multiple conversion tasks simultaneously
+- **Queue Management**: Intelligent queue system for handling conversion tasks
+- **Memory Optimization**: Efficient resource usage for large documents
+- **Load Balancing**: Support for horizontal scaling across multiple nodes
+- **Resource Monitoring**: Track system resource usage during conversions
+
+### User Experience
+- **Modern Interface**: Clean, responsive UI built with modern web standards
+- **Real-time Updates**: Live progress tracking for conversion tasks
+- **Drag-and-Drop**: Easy file uploading with drag-and-drop support
+- **Dark Mode**: Full support for light and dark themes
+- **Responsive Design**: Works on desktop, tablet, and mobile devices
+
+### Monitoring & Management
+- **Conversion History**: Comprehensive dashboard for tracking all conversion tasks
+- **System Metrics**: Real-time monitoring of system performance
+- **Error Analytics**: Detailed tracking and reporting of conversion issues
+- **Advanced Logging**: Structured logging with context tracking
+- **Performance Metrics**: Track conversion times and resource usage
+
+### Advanced Error Handling
+- **Recovery Strategies**: Multiple strategies for handling different error types
+- **Graceful Degradation**: Continue operation despite partial failures
+- **Detailed Reporting**: Comprehensive error information for troubleshooting
+- **Automatic Retries**: Intelligent retry system with exponential backoff
+- **Alternative Processing**: Fallback to alternative conversion methods when needed
 
 ## Project Structure
 
 ```
 markdown-forge/
 ├── app/                    # Frontend Flask application
-│   ├── static/            # Static assets (CSS, JS, images)
-│   │   ├── css/           # CSS stylesheets
-│   │   │   ├── components/ # Reusable component styles
-│   │   │   └── style.css  # Main stylesheet
-│   │   └── js/            # JavaScript files
-│   │       ├── components/ # Reusable component scripts
-│   │       └── utils/     # Utility scripts
-│   │       └── main.js    # Main JavaScript file
-│   ├── templates/         # Jinja2 templates
-│   │   ├── components/    # Reusable template components
-│   │   ├── errors/       # Error page templates
-│   │   └── base.html     # Base template
-│   ├── views/             # Standalone HTML views
-│   ├── services/          # Frontend services
-│   ├── utils/             # Frontend utilities
-│   └── main.py            # Flask application entry point
-│
-├── backend/               # Backend FastAPI application
-│   ├── api/              # API endpoints
-│   ├── core/             # Core functionality
-│   ├── models/           # Database models
-│   ├── services/         # Backend services
-│   ├── utils/            # Backend utilities
-│   └── main.py           # FastAPI application entry point
-│
-├── requirements/          # Project requirements and documentation
-├── tests/                # Test files
-├── docker/               # Docker configuration
-└── scripts/              # Utility scripts
-```
-
-## Features
-
-- Modern web interface with responsive design
-- RESTful API for file operations and conversions
-- Markdown to multiple format conversion:
-  - HTML
-  - PDF
-  - DOCX
-  - PNG
-  - CSV
-  - XLSX
-- Reverse conversion from multiple formats to Markdown:
-  - HTML to Markdown
-  - PDF to Markdown
-  - DOCX to Markdown
-  - CSV to Markdown
-  - XLSX to Markdown
-- File management (upload, list, rename, delete)
-- Conversion status tracking
-- Comprehensive error handling
-- Advanced error recovery system with multiple strategies
-- Conversion queue with concurrent processing
-- Conversion templates for customizable output
-- Rate limiting for API endpoints
-- Docker containerization
-- Comprehensive test suite
-- Loading indicators for asynchronous operations
-- Responsive design for all devices
-
-## UI Components
-
-### Loading Indicator
-
-The application includes a reusable loading indicator component that can be used to show loading states during asynchronous operations.
-
-#### Usage in Templates
-
-```html
-{% from 'components/loading.html' import loading_overlay %}
-{{ loading_overlay() }}
-```
-
-#### JavaScript API
-
-```javascript
-// Show default loading overlay
-showLoading('Processing your request...');
-
-// Hide loading overlay
-hideLoading();
-
-// Show custom loading overlay
-showCustomLoading('Converting file...');
-
-// Hide custom loading overlay
-hideCustomLoading();
-```
-
-#### CSS Customization
-
-The loading indicator styles can be customized by modifying the `app/static/css/components/loading.css` file.
-
-### Error Handling
-
-The application includes a comprehensive error handling system for both server-side and client-side errors.
-
-#### Server-Side Error Handling
-
-The application uses custom exception classes and error handlers to provide consistent error responses:
-
-```python
-# Custom exception classes
-class ValidationError(AppError):
-    """Exception raised for validation errors."""
-    
-    def __init__(self, message, payload=None):
-        super().__init__(message, status_code=400, payload=payload)
-
-class NotFoundError(AppError):
-    """Exception raised when a resource is not found."""
-    
-    def __init__(self, message, payload=None):
-        super().__init__(message, status_code=404, payload=payload)
-
-# Usage
-raise ValidationError('Invalid file format')
-```
-
-#### Client-Side Error Handling
-
-The application includes a client-side error handling utility for handling API errors:
-
-```javascript
-// Handle API response
-try {
-    const response = await fetch('/api/files');
-    const data = await handleApiResponse(response);
-    // Process data
-} catch (error) {
-    if (error instanceof ApiError) {
-        showError(error.message);
-    } else {
-        showError('An unexpected error occurred');
-    }
-}
-
-// Show error message
-showError('File upload failed', 'danger', 5000);
-```
-
-#### Error Pages
-
-The application includes custom error pages for common HTTP errors:
-
-- 404 Not Found
-- 500 Internal Server Error
-
-### Error Recovery System
-
-The application includes an advanced error recovery system for file conversions:
-
-#### Recovery Strategies
-
-The system supports multiple recovery strategies for different types of errors:
-
-- **Timeout Increase**: Automatically increases timeout for operations that time out
-- **Simplified Options**: Retries with simplified conversion options
-- **Memory Optimization**: Reduces memory usage for memory-intensive operations
-- **Network Retry**: Implements exponential backoff for network-related errors
-- **Backoff Strategy**: Implements exponential backoff for general errors
-- **Alternative Converter**: Falls back to alternative conversion methods
-
-#### Usage
-
-The error recovery system is automatically integrated with the conversion queue:
-
-```python
-# The conversion queue automatically applies recovery strategies
-await conversion_queue.add_task(file_id, formats, template_id)
+│   ├── static/             # Static assets
+│   ├── templates/          # HTML templates
+│   ├── utils/              # Utility modules
+│   │   ├── logger.py       # Logging utility
+│   │   ├── config.py       # Configuration utility
+│   │   └── route_helpers.py # Route helper utilities
+│   ├── tests/              # Frontend tests
+│   └── main.py             # Flask application entry point
+├── backend/                # Backend FastAPI application
+│   ├── api/                # API endpoints
+│   ├── models/             # Data models
+│   ├── services/           # Business logic
+│   ├── utils/              # Utility functions
+│   ├── tests/              # Backend tests
+│   └── main.py             # FastAPI application entry point
+├── requirements/           # Project requirements and documentation
+├── tests/                  # Integration and e2e tests
+├── docker/                 # Docker configuration
+├── scripts/                # Utility scripts
+├── requirements.txt        # Python dependencies
+├── run.py                  # Run script for development
+└── README.md               # This file
 ```
 
 ## Prerequisites
 
-- Python 3.11+
-- Node.js 18+
-- Docker and Docker Compose
-- Pandoc 3.1.3+
+- Python 3.8+
+- Node.js 18+ (for frontend development)
+- Docker and Docker Compose (for containerized deployment)
+- Pandoc 2.11+ (for document conversion)
+- PostgreSQL 15+
 
-## Installation
+## Quick Start
 
-1. Clone the repository:
+The project includes a convenient run script that simplifies development, testing, and setup:
+
 ```bash
-git clone https://github.com/yourusername/markdown-forge.git
-cd markdown-forge
+# Set up the development environment
+python run.py setup
+
+# Run both frontend and backend
+python run.py run
+
+# Run just the frontend or backend
+python run.py run frontend
+python run.py run backend
+
+# Run tests
+python run.py test
+python run.py test frontend
+python run.py test backend
+python run.py test unit
+python run.py test integration
 ```
 
-2. Set up the frontend (Flask):
+## Manual Installation
+
+### Frontend (Flask)
+
 ```bash
-cd app
+# Create a virtual environment
 python -m venv venv
-source venv/bin/activate  # On Windows: .\venv\Scripts\activate
+
+# Activate the virtual environment
+# On Windows:
+venv\Scripts\activate
+# On macOS/Linux:
+source venv/bin/activate
+
+# Install dependencies
 pip install -r requirements.txt
-```
 
-3. Set up the backend (FastAPI):
-```bash
-cd ../backend
-python -m venv venv
-source venv/bin/activate  # On Windows: .\venv\Scripts\activate
-pip install -r requirements.txt
-```
-
-4. Set up environment variables:
-```bash
-cp backend/.env.example backend/.env
-# Edit .env with your configuration
-```
-
-## Development
-
-1. Start the frontend development server:
-```bash
+# Run the Flask application
 cd app
-flask run --debug
+flask run
 ```
 
-2. Start the backend development server:
+### Backend (FastAPI)
+
 ```bash
+# Create a virtual environment (if not already created)
+python -m venv venv
+
+# Activate the virtual environment
+# On Windows:
+venv\Scripts\activate
+# On macOS/Linux:
+source venv/bin/activate
+
+# Install dependencies
+pip install -r requirements.txt
+
+# Run the FastAPI application
 cd backend
 uvicorn main:app --reload
 ```
 
-3. Access the applications:
-- Frontend: http://localhost:5000
-- Backend API: http://localhost:8000
-- API Documentation: http://localhost:8000/docs
+### Database Setup
+
+```bash
+# Create the database
+createdb markdown_forge
+
+# Run migrations
+alembic upgrade head
+```
+
+## Development
+
+### Frontend
+
+```bash
+# Start the Flask development server
+cd app
+flask run --debug
+```
+
+### Backend
+
+```bash
+# Start the FastAPI development server
+cd backend
+uvicorn main:app --reload
+```
 
 ## Docker Deployment
 
-1. Build and run with Docker Compose:
 ```bash
-docker-compose up --build
-```
+# Build and start the containers
+docker-compose up -d
 
-2. Access the applications:
-- Frontend: http://localhost:5000
-- Backend API: http://localhost:8000
+# View logs
+docker-compose logs -f
+
+# Stop the containers
+docker-compose down
+```
 
 ## Testing
 
-1. Run frontend tests:
 ```bash
-cd app
+# Run all tests
 pytest
-```
 
-2. Run backend tests:
-```bash
-cd backend
-pytest
+# Run frontend tests
+pytest app/tests
+
+# Run backend tests
+pytest backend/tests
+
+# Run with coverage
+pytest --cov=app --cov=backend
+
+# Run performance tests
+pytest tests/performance
+
+# Run security tests
+pytest tests/security
 ```
 
 ## API Documentation
 
-The API provides the following endpoints:
+The API documentation is available at `/docs` when the backend is running:
 
-### File Operations
-- `POST /api/v1/files/upload` - Upload files
-- `GET /api/v1/files` - List files
-- `GET /api/v1/files/{id}` - Get file details
-- `DELETE /api/v1/files/{id}` - Delete file
-- `PUT /api/v1/files/{id}/rename` - Rename file
+- http://localhost:8000/docs (Swagger UI)
+- http://localhost:8000/redoc (ReDoc)
 
-### Conversion
-- `POST /api/v1/convert` - Convert file
-- `GET /api/v1/convert/{id}/status` - Get conversion status
-- `GET /api/v1/convert/{id}/download` - Download converted file
-- `GET /api/v1/convert/queue/status` - Get conversion queue status
+### API Endpoints
 
-### Templates
-- `POST /api/v1/templates` - Create a new template
-- `GET /api/v1/templates` - List all templates
-- `GET /api/v1/templates/{id}` - Get template details
-- `PUT /api/v1/templates/{id}` - Update a template
-- `DELETE /api/v1/templates/{id}` - Delete a template
-- `GET /api/v1/templates/{id}/options/{format}` - Get template options for a format
+| Endpoint | Method | Description |
+|----------|--------|-------------|
+| `/api/files` | GET | List all files |
+| `/api/files` | POST | Upload a file |
+| `/api/files/{file_id}` | GET | Get file details |
+| `/api/files/{file_id}` | PUT | Update file |
+| `/api/files/{file_id}` | DELETE | Delete file |
+| `/api/convert` | POST | Convert a file |
+| `/api/batch` | POST | Batch convert files |
+| `/api/templates` | GET | List templates |
+| `/api/templates` | POST | Create template |
+| `/api/templates/{template_id}` | GET | Get template |
+| `/api/health` | GET | System health check |
+| `/api/queue/status` | GET | Get queue status |
+| `/api/queue/stats` | GET | Get queue statistics |
+| `/api/conversions/active` | GET | Get active conversions |
+| `/api/system/metrics` | GET | Get system metrics |
+
+## Logging and Performance Tracking
+
+The application features a comprehensive logging system with:
+
+- Structured JSON logging
+- Context tracking across requests
+- Performance metrics collection
+- Request/response logging
+- Batch operation tracking
+
+Use the route helper utilities to automatically add performance tracking and consistent error handling to your routes:
+
+```python
+from utils.route_helpers import track_performance, api_request
+
+@app.route('/my-route')
+@track_performance(page_name="my_page")
+def my_route():
+    # This route is automatically instrumented with:
+    # - Performance timing
+    # - Context tracking
+    # - Error handling
+    # - Metrics logging
+    
+    # Use the API request helper for consistent logging
+    response = api_request(url="http://api.example.com/endpoint")
+    
+    return render_template('my-template.html')
+```
 
 ## Contributing
 
 1. Fork the repository
-2. Create a feature branch
-3. Commit your changes
-4. Push to the branch
-5. Create a Pull Request
+2. Create your feature branch (`git checkout -b feature/amazing-feature`)
+3. Commit your changes (`git commit -m 'Add some amazing feature'`)
+4. Push to the branch (`git push origin feature/amazing-feature`)
+5. Open a Pull Request
 
 ## License
 

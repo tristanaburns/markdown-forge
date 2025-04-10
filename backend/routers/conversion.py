@@ -11,7 +11,7 @@ from sqlalchemy.orm import Session
 from pydantic import BaseModel, Field
 
 from ..database import get_db
-from ..models import File, ConversionStatus
+from ..models import File, ConversionStatus, ConversionHistory
 from ..services.markdown_converter import MarkdownConverter
 from ..services.conversion_queue import ConversionQueue
 from ..utils.error_handler import AppError
@@ -55,6 +55,19 @@ class QueueStatusResponse(BaseModel):
     queue_length: int = Field(..., description="Number of files in queue")
     active_conversions: int = Field(..., description="Number of active conversions")
     estimated_wait_time: Optional[str] = Field(None, description="Estimated wait time")
+
+class ConversionHistoryResponse(BaseModel):
+    """Model for conversion history response."""
+    total_count: int = Field(..., description="Total number of conversion records")
+    success_count: int = Field(..., description="Number of successful conversions")
+    failed_count: int = Field(..., description="Number of failed conversions")
+    success_rate: float = Field(..., description="Success rate percentage")
+    avg_duration: float = Field(..., description="Average conversion duration in seconds")
+    avg_memory_usage: float = Field(..., description="Average memory usage in MB")
+    avg_cpu_usage: float = Field(..., description="Average CPU usage percentage")
+    history: List[Dict[str, Any]] = Field(..., description="List of conversion history records")
+    limit: int = Field(..., description="Limit used for pagination")
+    offset: int = Field(..., description="Offset used for pagination")
 
 # Initialize conversion queue
 conversion_queue = ConversionQueue()
@@ -301,4 +314,97 @@ async def get_queue_status():
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             detail=f"Failed to get queue status: {str(e)}"
+        )
+
+@router.get("/history", response_model=ConversionHistoryResponse)
+async def get_conversion_history(
+    limit: int = 100,
+    offset: int = 0,
+    db: Session = Depends(get_db)
+):
+    """
+    Get conversion history with pagination.
+    
+    Args:
+        limit: Maximum number of records to return
+        offset: Offset for pagination
+        db: Database session
+        
+    Returns:
+        ConversionHistoryResponse: Conversion history response
+    """
+    try:
+        # Get conversion history
+        history = await conversion_queue.get_conversion_history(limit, offset)
+        return history
+        
+    except Exception as e:
+        logger.error(f"Error getting conversion history: {str(e)}")
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=f"Failed to get conversion history: {str(e)}"
+        )
+
+@router.delete("/history/{conversion_id}")
+async def delete_conversion_history(
+    conversion_id: int,
+    db: Session = Depends(get_db)
+):
+    """
+    Delete a specific conversion history record.
+    
+    Args:
+        conversion_id: ID of the conversion history record
+        db: Database session
+        
+    Returns:
+        Dict: Success response
+    """
+    try:
+        # Get conversion history record
+        history = db.query(ConversionHistory).filter(ConversionHistory.id == conversion_id).first()
+        if not history:
+            raise AppError(f"Conversion history record with id {conversion_id} not found", status_code=404)
+            
+        # Delete record
+        db.delete(history)
+        db.commit()
+        
+        return {"message": "Conversion history record deleted successfully"}
+        
+    except AppError as e:
+        logger.error(f"Error deleting conversion history record: {str(e)}")
+        raise HTTPException(status_code=e.status_code, detail=e.message)
+    except Exception as e:
+        logger.error(f"Unexpected error deleting conversion history record: {str(e)}")
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=f"Failed to delete conversion history record: {str(e)}"
+        )
+
+@router.delete("/history")
+async def clear_conversion_history(
+    db: Session = Depends(get_db)
+):
+    """
+    Clear all conversion history records.
+    
+    Args:
+        db: Database session
+        
+    Returns:
+        Dict: Success response
+    """
+    try:
+        # Delete all records
+        db.query(ConversionHistory).delete()
+        db.commit()
+        
+        return {"message": "Conversion history cleared successfully"}
+        
+    except Exception as e:
+        logger.error(f"Error clearing conversion history: {str(e)}")
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=f"Failed to clear conversion history: {str(e)}"
         ) 

@@ -1,282 +1,490 @@
 # Project: Markdown Forge - Requirements & Implementation Specification
 
-## Version: 1.3
+## Version: 1.5
 ## Author: Tristan
-## Date: April 9, 2024
-## Last Updated: April 9, 2024
+## Date: April 10, 2024
+## Last Updated: April 12, 2024
 
----
+## Core Architecture Principles
 
-## 1. Overview
-**Markdown Forge** is a modern web application with a Flask frontend and FastAPI backend, designed to:
-- Accept Markdown (.md) files via web upload
-- Convert Markdown into various formats using a RESTful API
-- Provide a modern, responsive web interface
-- Enable file management and conversion through both UI and API
-- Use persistent storage for files and data
-- Be fully containerized for easy deployment
+### Component Autonomy
+1. **Strict Separation of Concerns**: The application must maintain a strict separation between frontend (UI) and backend (API) components.
+2. **Independent Operation**: All components must be capable of operating independently, with no direct code dependencies between them.
+3. **API-Driven Communication**: Communication between components must occur exclusively through well-defined API contracts.
+4. **Interface Stability**: API interfaces must be stable, versioned, and backward compatible.
+5. **Component Testability**: Each component must be testable in isolation without requiring other components.
+6. **Independent Deployment**: Components must support independent deployment and scaling.
+7. **Technology Independence**: Each component should use technologies optimized for its specific role.
 
----
+## Overview
 
-## 2. Architecture
+Markdown Forge is a web application for converting and managing Markdown files. The application consists of two autonomous components:
 
-### 2.1. Frontend (Flask)
-- Modern web interface using Flask and Bootstrap
-- Server-side rendering with Jinja2 templates
-- Client-side interactivity with JavaScript
-- Responsive design for all devices
-- Real-time feedback and progress indicators
+1. **Frontend (Flask Application)**
+   - Modern web interface with responsive design
+   - File management interface
+   - Conversion interface
+   - Template management interface
+   - Error handling and user feedback
+   - Performance monitoring UI
+   - Dark mode support
+   - Accessibility features
+   - Conversion history dashboard
+   - System metrics visualization
 
-### 2.2. Backend (FastAPI)
-- RESTful API for all operations
-- Async processing for file conversions
-- Database integration for file metadata
-- Authentication and authorization
-- Comprehensive API documentation
+2. **Backend (FastAPI Application)**
+   - RESTful API endpoints
+   - File operations service
+   - Conversion service
+   - Template management service
+   - Error handling system
+   - Performance optimization
+   - Security features
+   - Monitoring system
+   - Conversion queue for batch processing
+   - Template caching system
 
-### 2.3. Communication
-- Frontend communicates with backend via REST API
-- WebSocket support for real-time updates
-- Standardized error handling and responses
-- Rate limiting and security measures
+## Architecture
 
----
-
-## 3. Key Functional Requirements
-
-### 3.1. Frontend Features
-- Modern, responsive web interface
-- Drag-and-drop file upload
-- Real-time conversion status
-- File management interface
-- Preview functionality
-- Download options for all formats
-
-### 3.2. Backend Features
-- RESTful API endpoints
-- File conversion services
-- Database integration
-- Authentication system
-- Logging and monitoring
+### Frontend Architecture
+- Flask web application
+- Jinja2 templating engine
+- Static file handling
+- Frontend services
+- Frontend utilities
 - Error handling
+- Logging system
+- Performance monitoring
+- Conversion history dashboard
+- System metrics visualization
 
-### 3.3. File Operations
-- Upload: Support for multiple files, max 10MB each
-- Conversion: HTML, PDF, DOCX, PNG, CSV, XLSX formats
-- Reverse Conversion: HTML, PDF, DOCX, CSV, XLSX to Markdown
-- Storage: Persistent storage with cleanup
-- Management: List, rename, delete operations
+### Backend Architecture
+- FastAPI application
+- RESTful API endpoints
+- Database integration
+- Backend services
+- Backend utilities
+- Error handling
+- Logging system
+- Performance monitoring
+- Conversion queue
+- Template caching
 
----
+### Database Architecture
+- PostgreSQL database
+- Database models
+- Database migrations
+- Database utilities
+- Connection pooling
+- Query optimization
+- Backup system
+- Monitoring system
 
-## 4. Technical Stack
+### Integration Architecture
+- **API Contract**: Well-defined API endpoints with standardized request/response formats
+- **Authentication**: JWT-based authentication for API access
+- **Error Handling**: Standardized error responses
+- **Monitoring**: Health checks and performance metrics
+- **Documentation**: Comprehensive API documentation with Swagger and ReDoc
 
-### 4.1. Frontend
-- Flask 2.3+
-- Bootstrap 5
-- JavaScript (ES6+)
-- Jinja2 templates
-- TypeScript for utilities
+## Key Functional Requirements
 
-### 4.2. Backend
+### Frontend Requirements
+1. **File Management**
+   - Upload files (single and batch)
+   - List files
+   - Preview files
+   - Download files
+   - Delete files
+   - Rename files
+   - Move files
+   - Search files
+
+2. **Conversion Interface**
+   - Select output format
+   - Configure conversion options
+   - Monitor conversion progress
+   - View conversion history
+   - Download converted files
+   - Batch conversion support
+   - Template selection
+   - Custom template creation
+   - Queue status monitoring
+   - System metrics visualization
+   - Export conversion history data
+   - Filter and search conversion history
+
+3. **Template Management**
+   - Create templates
+   - Edit templates
+   - Delete templates
+   - Preview templates
+   - Share templates
+   - Version control
+   - Template categories
+   - Template search
+
+4. **User Interface**
+   - Responsive design
+   - Dark mode
+   - Accessibility features
+   - Loading indicators
+   - Error messages
+   - Success notifications
+   - Progress tracking
+   - Real-time updates
+   - Pagination controls
+   - Filter components
+
+### Backend Requirements
+1. **File Operations**
+   - File upload handling
+   - File storage management
+   - File metadata tracking
+   - File cleanup routines
+   - File validation
+   - File security
+   - File backup
+   - File recovery
+
+2. **Conversion Service**
+   - Format conversion
+   - Batch processing
+   - Concurrent processing
+   - Template application
+   - Error handling
+   - Progress tracking
+   - Performance optimization
+   - Resource management
+   - Conversion history tracking
+   - Queue management
+
+3. **Template Management**
+   - Template storage
+   - Template versioning
+   - Template caching
+   - Template validation
+   - Template sharing
+   - Template backup
+   - Template recovery
+   - Template search
+
+4. **API Endpoints**
+   - File operations
+   - Conversion operations
+   - Template operations
+   - System operations
+   - Health checks
+   - Performance metrics
+   - Error reporting
+   - Status updates
+   - History management
+   - Queue management
+
+## Technical Stack
+
+### Frontend
+- Flask 3.0+
+- Jinja2 3.1+
+- HTML5/CSS3
+- JavaScript/TypeScript
+- Bootstrap 5.3+
+- jQuery 3.7+
+- Chart.js 4.4+
+- Moment.js 2.30+
+
+### Backend
 - FastAPI 0.109+
-- SQLAlchemy 2.0+
-- Pydantic 2.6+
 - Python 3.11+
-- PostgreSQL
+- PostgreSQL 15+
+- SQLAlchemy 2.0+
+- Pydantic 2.5+
+- Pandoc 3.1+
+- aiofiles 23.2+
+- cachetools 5.3+
+- asyncio for concurrent processing
 
-### 4.3. Conversion Tools
-- markdown2
-- pandoc
-- pdfkit
-- python-docx
-- html2image
-- openpyxl (for XLSX conversion)
-- csvkit (for CSV conversion)
+### Development Tools
+- Git 2.40+
+- Docker 24.0+
+- Docker Compose 2.23+
+- VS Code 1.86+
+- Python extensions
+- TypeScript extensions
+- ESLint 8.56+
+- Prettier 3.2+
 
-### 4.4. Infrastructure
-- Docker
-- Docker Compose
-- GitHub Actions
-- PostgreSQL
-
----
-
-## 5. Directory Structure
+## Directory Structure
 
 ```
 markdown-forge/
-├── app/                    # Frontend Flask application
-│   ├── static/            # Static assets
+├── app/                    # Frontend Flask application (autonomous)
+│   ├── static/            # Static files
+│   │   ├── css/           # CSS stylesheets
+│   │   ├── js/            # JavaScript files
+│   │   └── img/           # Images and icons
 │   ├── templates/         # Jinja2 templates
-│   ├── views/             # Standalone HTML views
 │   ├── services/          # Frontend services
 │   ├── utils/             # Frontend utilities
-│   └── main.py            # Flask application entry point
-│
-├── backend/               # Backend FastAPI application
-│   ├── api/              # API endpoints
-│   ├── core/             # Core functionality
-│   ├── models/           # Database models
-│   ├── services/         # Backend services
-│   ├── utils/            # Backend utilities
-│   └── main.py           # FastAPI application entry point
-│
+│   ├── routes/            # Route definitions
+│   ├── middleware/        # Request/response middleware
+│   ├── models/            # Frontend data models
+│   ├── controllers/       # Request handlers
+│   └── main.py            # Flask application
+├── backend/               # Backend FastAPI application (autonomous)
+│   ├── api/               # API endpoints
+│   ├── routers/           # Router definitions
+│   ├── models/            # Database models
+│   ├── services/          # Backend services
+│   ├── utils/             # Backend utilities
+│   ├── conversion_queue.py # Conversion queue implementation
+│   ├── config.py          # Configuration
+│   ├── database.py        # Database connection
+│   ├── auth.py            # Authentication
+│   └── main.py            # FastAPI application
 ├── requirements/          # Project requirements
-├── tests/                # Test files
-├── docker/               # Docker configuration
-└── scripts/              # Utility scripts
+├── docs/                  # Documentation
+│   └── api/               # API documentation
+├── docker/                # Docker configuration
+└── requirements.txt       # Python dependencies
 ```
 
----
+## API Contract
 
-## 6. API Endpoints
+The following API contract defines the communication between frontend and backend components:
 
-### 6.1. File Operations
-- `POST /api/v1/files/upload` - Upload files
-- `GET /api/v1/files` - List files
-- `GET /api/v1/files/{id}` - Get file details
-- `DELETE /api/v1/files/{id}` - Delete file
-- `PUT /api/v1/files/{id}/rename` - Rename file
+### File Operations
+- `POST /api/files/upload` - Upload files
+- `GET /api/files` - List files
+- `GET /api/files/{file_id}` - Get file details
+- `GET /api/files/{file_id}/download` - Download file
+- `DELETE /api/files/{file_id}` - Delete file
+- `PUT /api/files/{file_id}/rename` - Rename file
+- `PUT /api/files/{file_id}/move` - Move file
 
-### 6.2. Conversion
-- `POST /api/v1/convert` - Convert file
-- `GET /api/v1/convert/{id}/status` - Get conversion status
-- `GET /api/v1/convert/{id}/download` - Download converted file
-- `POST /api/v1/convert/to-markdown` - Convert other formats to Markdown
+### Conversion Operations
+- `POST /api/convert` - Convert file
+- `POST /api/convert/batch` - Batch convert files 
+- `GET /api/convert/status/{task_id}` - Get conversion status
+- `GET /api/convert/history` - Get conversion history
+- `DELETE /api/convert/history/{conversion_id}` - Delete specific conversion history
+- `POST /api/convert/history/clear` - Clear all conversion history
+- `POST /api/convert/{conversion_id}/retry` - Retry failed conversion
+- `POST /api/convert/{conversion_id}/cancel` - Cancel active conversion
+- `GET /api/convert/queue/status` - Get queue status with metrics
 
-### 6.3. System
-- `GET /api/v1/health` - Health check
-- `GET /api/v1/status` - System status
-- `GET /api/v1/config` - Configuration
+### Template Operations
+- `GET /api/convert/templates` - List conversion templates
+- `POST /api/convert/templates` - Create conversion template
+- `PUT /api/convert/templates/{template_id}` - Update conversion template
+- `DELETE /api/convert/templates/{template_id}` - Delete conversion template
+- `GET /api/convert/templates/{template_id}` - Get template details
 
----
+### System Operations
+- `GET /api/health` - Health check
+- `GET /api/metrics` - Performance metrics
+- `GET /api/status` - System status
+- `GET /api/logs` - System logs
 
-## 7. Database Schema
+## Database Schema
 
-### 7.1. Files Table
+### Files Table
 ```sql
 CREATE TABLE files (
     id UUID PRIMARY KEY,
-    filename VARCHAR(255) NOT NULL,
-    original_name VARCHAR(255) NOT NULL,
-    mime_type VARCHAR(100) NOT NULL,
-    size INTEGER NOT NULL,
-    created_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP,
-    updated_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP
+    name VARCHAR(255) NOT NULL,
+    path VARCHAR(255) NOT NULL,
+    size BIGINT NOT NULL,
+    type VARCHAR(50) NOT NULL,
+    created_at TIMESTAMP NOT NULL,
+    updated_at TIMESTAMP NOT NULL,
+    metadata JSONB
 );
 ```
 
-### 7.2. Conversions Table
+### Conversions Table
 ```sql
 CREATE TABLE conversions (
     id UUID PRIMARY KEY,
     file_id UUID REFERENCES files(id),
-    format VARCHAR(50) NOT NULL,
+    output_format VARCHAR(50) NOT NULL,
     status VARCHAR(50) NOT NULL,
-    output_path VARCHAR(255),
-    created_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP,
-    updated_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP
+    started_at TIMESTAMP NOT NULL,
+    completed_at TIMESTAMP,
+    error TEXT,
+    duration FLOAT,
+    cpu_usage FLOAT,
+    memory_usage FLOAT,
+    template_id UUID REFERENCES templates(id),
+    metadata JSONB
 );
 ```
 
----
+### Templates Table
+```sql
+CREATE TABLE templates (
+    id UUID PRIMARY KEY,
+    name VARCHAR(255) NOT NULL,
+    description TEXT,
+    content TEXT NOT NULL,
+    format VARCHAR(50) NOT NULL,
+    created_at TIMESTAMP NOT NULL,
+    updated_at TIMESTAMP NOT NULL,
+    metadata JSONB
+);
+```
 
-## 8. Security Requirements
+## Security Requirements
 
-### 8.1. Authentication
-- JWT-based authentication
-- Role-based access control
-- Secure password hashing
-- Session management
-
-### 8.2. Data Protection
+### Frontend Security
 - Input validation
-- Output sanitization
-- File type verification
-- Size limitations
-
-### 8.3. API Security
-- Rate limiting
-- CORS configuration
-- Request validation
+- XSS prevention
+- CSRF protection
+- Secure file upload
 - Error handling
+- Session management
+- Access control
+- Audit logging
 
----
+### Backend Security
+- API authentication
+- Rate limiting
+- Input validation
+- SQL injection prevention
+- File validation
+- Error handling
+- Access control
+- Audit logging
 
-## 9. Testing Requirements
+### Database Security
+- Connection encryption
+- Query parameterization
+- Access control
+- Backup encryption
+- Audit logging
+- Data validation
+- Error handling
+- Recovery procedures
 
-### 9.1. Frontend Tests
-- Unit tests for JavaScript utilities
-- Component tests for UI elements
-- Integration tests for workflows
-- E2E tests for critical paths
+## Testing Requirements
 
-### 9.2. Backend Tests
-- Unit tests for services
-- API endpoint tests
-- Database integration tests
+### Frontend Testing
+- Unit tests
+- Component tests
+- Integration tests
+- UI tests
+- Accessibility tests
 - Performance tests
+- Security tests
+- End-to-end tests
 
-### 9.3. Infrastructure Tests
-- Docker build tests
-- Deployment tests
-- Security scans
-- Load testing
+### Backend Testing
+- Unit tests
+- API tests
+- Integration tests
+- Service tests
+- Performance tests
+- Security tests
+- Load tests
+- Stress tests
 
----
+### Database Testing
+- Unit tests
+- Integration tests
+- Performance tests
+- Security tests
+- Backup tests
+- Recovery tests
+- Migration tests
+- Data validation tests
 
-## 10. Deployment
+## Deployment Strategy
 
-### 10.1. Development
-- Local development setup
-- Hot reloading
-- Debug mode
-- Test environment
-
-### 10.2. Production
+### Frontend Deployment
 - Docker containerization
-- Environment configuration
-- Database setup
+- Static file serving
+- Cache configuration
+- SSL/TLS setup
+- Load balancing
 - Monitoring setup
+- Backup strategy
+- Scaling configuration
 
-### 10.3. CI/CD
-- GitHub Actions workflow
-- Automated testing
-- Docker image building
-- Deployment automation
+### Backend Deployment
+- Docker containerization
+- API gateway
+- Cache configuration
+- SSL/TLS setup
+- Load balancing
+- Monitoring setup
+- Backup strategy
+- Scaling configuration
 
----
+### Database Deployment
+- Docker containerization
+- Replication setup
+- Backup configuration
+- SSL/TLS setup
+- Load balancing
+- Monitoring setup
+- Recovery strategy
+- Scaling configuration
 
-## 11. Monitoring & Logging
+## Implemented Features
 
-### 11.1. Application Logs
-- Structured JSON logging
-- Log levels (DEBUG, INFO, WARNING, ERROR)
-- Request/response logging
-- Performance metrics
-
-### 11.2. System Monitoring
-- Health checks
-- Resource usage
-- Error rates
-- Performance metrics
-
----
-
-## 12. Future Enhancements
-
-### 12.1. Features
-- Real-time collaboration
-- Version control
-- Custom templates
+### Frontend Features
+- Modern responsive web interface
+- File upload with drag-and-drop
+- File management
+- Conversion interface
+- Preview capabilities
+- Error handling
+- Dark mode
+- Accessibility features
 - Batch processing
-- Cloud storage integration
+- Conversion history dashboard
+- System metrics visualization
+- Real-time status updates
+- Search and filter functionality
+- Pagination controls
 
-### 12.2. Technical
+### Backend Features
+- RESTful API endpoints
+- File operations
+- Conversion service
+- Template management
+- Authentication
+- Error handling
+- Performance optimization
+- Conversion queue for batch processing
+- Template caching
+- Conversion history tracking
+- System metrics reporting
+- Queue status monitoring
+
+## Future Enhancements
+
+### Frontend Enhancements
+- Real-time collaboration
+- Advanced search
+- Custom themes
+- Keyboard shortcuts
+- Mobile app
+- Offline support
+- Plugin system
+- Analytics dashboard
+- AI-assisted formatting
+- Real-time notifications
+
+### Backend Enhancements
 - GraphQL API
 - WebSocket support
-- Mobile application
-- Advanced analytics
+- Advanced caching
 - Machine learning integration
+- AI-powered formatting suggestions
+- Plugin system
+- Analytics system
+- Webhook integrations
+- Custom converter plugins
+- Advanced search capabilities
 

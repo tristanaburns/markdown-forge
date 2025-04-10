@@ -1,13 +1,67 @@
-# Core Dependencies
-fastapi>=0.109.0
-uvicorn[standard]>=0.27.0
-sqlalchemy>=2.0.25
-pydantic>=2.6.0
-pydantic-settings>=2.1.0
-python-jose[cryptography]>=3.3.0
-passlib[bcrypt]>=1.7.4
-python-multipart>=0.0.7
-python-dotenv>=1.0.0
+# Flask (Frontend)
+Flask==2.3.3
+Werkzeug==2.3.7
+Jinja2==3.1.2
+itsdangerous==2.1.2
+click==8.1.7
+Flask-WTF==1.1.1
+WTForms==3.0.1
+Flask-Login==0.6.2
+Flask-SQLAlchemy==3.0.5
+Flask-Migrate==4.0.4
+Flask-Caching==2.0.2
+Flask-Cors==4.0.0
+
+# FastAPI (Backend)
+fastapi==0.103.1
+uvicorn==0.23.2
+pydantic==2.3.0
+pydantic-settings==2.0.3
+python-multipart==0.0.6
+email-validator==2.0.0
+python-jose[cryptography]==3.3.0
+passlib[bcrypt]==1.7.4
+
+# Database
+SQLAlchemy==2.0.20
+alembic==1.12.0
+psycopg2-binary==2.9.7
+asyncpg==0.28.0
+
+# Async
+asyncio==3.4.3
+aiofiles==23.1.0
+aiocache==0.12.1
+cachetools==5.3.1
+
+# Conversion tools
+pandoc==2.3
+pypandoc==1.11
+markdown==3.4.4
+weasyprint==59.0
+python-docx==0.8.11
+PyPDF2==3.0.1
+pillow==10.0.0
+python-frontmatter==1.0.0
+
+# Utilities
+python-dotenv==1.0.0
+requests==2.31.0
+pytz==2023.3
+marshmallow==3.20.1
+beautifulsoup4==4.12.2
+lxml==4.9.3
+pyjwt==2.8.0
+cryptography==41.0.3
+psutil==5.9.5
+cachetools==5.3.1
+
+# Testing
+pytest==7.4.0
+pytest-asyncio==0.21.1
+pytest-cov==4.1.0
+httpx==0.24.1
+pytest-mock==3.11.1
 
 # Markdown Processing
 markdown2>=2.4.12
@@ -15,33 +69,20 @@ pypandoc>=1.13.0
 
 # Document Conversion
 pdfkit>=1.0.0
-python-docx>=1.1.0
 html2image>=2.0.3
-weasyprint>=60.2
 reportlab>=4.0.8
 
 # HTTP and API
-requests>=2.31.0
 httpx>=0.26.0
 aiofiles>=23.2.1
 
-# Database and Migration
-alembic>=1.13.1
-asyncpg>=0.29.0
-aiosqlite>=0.19.0
-
 # Testing and Development
-pytest>=7.4.4
-pytest-asyncio>=0.23.3
-pytest-cov>=4.1.0
 black>=24.1.0
 isort>=5.13.2
 flake8>=7.0.0
 mypy>=1.8.0
 
 # Security
-cryptography>=42.0.0
-python-jose[cryptography]>=3.3.0
 bcrypt>=4.1.2
 
 # Monitoring and Logging

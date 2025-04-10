@@ -1,6 +1,18 @@
 # Markdown Forge - Backend API
 
-This directory contains the backend service for Markdown Forge, built with FastAPI and PostgreSQL.
+This directory contains the autonomous backend service for Markdown Forge, built with FastAPI and PostgreSQL.
+
+## Backend Autonomy Principles
+
+The backend API follows these key principles:
+
+- **Independent Operation**: The API functions as a standalone application that operates independently from any frontend implementation.
+- **API-First Design**: All functionality is exposed through well-defined API endpoints that follow REST principles.
+- **No Frontend Dependencies**: The backend has no dependencies on frontend code, libraries, or implementation details.
+- **Self-Contained Business Logic**: All business logic is contained within the backend, never leaking to the frontend.
+- **Independent Testing**: The backend can be tested in isolation using API requests, without requiring any frontend components.
+- **Separate Deployment**: The backend can be deployed independently from the frontend.
+- **Frontend Agnostic**: The API is designed to work with any frontend implementation that adheres to the API contract.
 
 ## Overview
 
@@ -12,41 +24,44 @@ The backend API provides:
 - Comprehensive API documentation
 - Conversion templates management
 - Advanced error recovery system
+- Performance optimization
+- Batch processing
+- Concurrent conversions
+- Template caching
+- Load balancing support
+- Conversion history tracking
+- Queue monitoring and management
 
 ## Directory Structure
 
 ```
 backend/
-├── api/               # API endpoints
-│   ├── v1/           # API version 1
-│   │   ├── files.py  # File operations endpoints
-│   │   ├── convert.py # Conversion endpoints
+├── api/                 # API endpoints
+│   ├── v1/             # API version 1
+│   │   ├── files.py    # File operations endpoints
+│   │   ├── convert.py  # Conversion endpoints
 │   │   ├── templates.py # Template management endpoints
-│   │   └── auth.py   # Authentication endpoints
-│   └── deps.py       # Dependency injection
-├── core/              # Core functionality
-│   ├── config.py     # Configuration management
-│   ├── security.py   # Security utilities
-│   └── logging.py    # Logging configuration
-├── models/            # Database models
-│   ├── file.py       # File model
-│   ├── template.py   # Template model
-│   └── conversion.py # Conversion model
-├── services/          # Business logic
-│   ├── converter.py  # File conversion service
+│   │   └── auth.py     # Authentication endpoints
+├── routers/             # FastAPI router definitions
+├── models/              # Database models
+│   ├── file.py         # File model
+│   ├── conversion.py   # Conversion model
+│   ├── template.py     # Template model
+├── services/            # Business logic services
+│   ├── converter.py    # Conversion service
 │   ├── template_manager.py # Template management service
-│   ├── conversion_queue.py # Conversion queue service
-│   └── file.py       # File management service
-├── utils/             # Utility functions
-│   ├── format_validator.py # Format validation utilities
-│   └── conversion_error_handler.py # Error handling utilities
-├── alembic/           # Database migrations
-├── tests/             # Test files
-├── .env               # Environment variables
-├── .env.example       # Example environment variables
-├── config.py          # Configuration management
-├── main.py            # FastAPI application entry point
-└── requirements.txt   # Python dependencies
+│   ├── file_service.py # File management service
+├── utils/               # Utility functions
+│   ├── error_handler.py # Error handling utilities
+│   ├── logger.py       # Logging configuration
+│   ├── validators.py   # Input validation utilities
+├── conversion_queue.py  # Queue implementation for batch processing
+├── models.py            # Database model definitions
+├── config.py            # Configuration management
+├── database.py          # Database connection handling
+├── auth.py              # Authentication utilities
+├── main.py              # FastAPI application entry point
+└── .env.example         # Example environment variables
 ```
 
 ## Setup
@@ -67,6 +82,15 @@ pip install -r requirements.txt
 cp .env.example .env
 ```
 Edit the `.env` file with your specific configuration values.
+
+4. Set up the database:
+```bash
+# Create PostgreSQL database
+createdb markdown_forge
+
+# Run migrations
+alembic upgrade head
+```
 
 ## Configuration
 
@@ -98,17 +122,11 @@ The application uses Pydantic for configuration management. Key configuration fi
 - `OUTPUT_DIR`: Directory for converted files
 - `MAX_UPLOAD_SIZE`: Maximum file size in bytes
 
-## Database Setup
-
-1. Create a PostgreSQL database:
-```sql
-CREATE DATABASE markdown_forge;
-```
-
-2. Run migrations:
-```bash
-alembic upgrade head
-```
+#### Performance
+- `BATCH_SIZE`: Number of files to process in a batch
+- `MAX_CONCURRENT_TASKS`: Maximum number of concurrent conversion tasks
+- `CACHE_TTL`: Template cache time-to-live in seconds
+- `CLEANUP_INTERVAL`: Interval for cleanup operations in seconds
 
 ## Running the Application
 
@@ -121,7 +139,9 @@ uvicorn main:app --reload
 - Swagger UI: http://localhost:8000/docs
 - ReDoc: http://localhost:8000/redoc
 
-## API Endpoints
+## API Contract
+
+The backend exposes a well-defined API contract that any frontend can implement:
 
 ### File Operations
 - `POST /api/v1/files/upload` - Upload files
@@ -132,9 +152,15 @@ uvicorn main:app --reload
 
 ### Conversion
 - `POST /api/v1/convert` - Convert file
+- `POST /api/v1/convert/batch` - Batch convert multiple files
 - `GET /api/v1/convert/{id}/status` - Get conversion status
 - `GET /api/v1/convert/{id}/download` - Download converted file
 - `GET /api/v1/convert/queue/status` - Get conversion queue status
+- `GET /api/v1/convert/history` - Get conversion history with pagination
+- `DELETE /api/v1/convert/history/{id}` - Delete specific history record
+- `POST /api/v1/convert/history/clear` - Clear all conversion history
+- `POST /api/v1/convert/{id}/retry` - Retry failed conversion
+- `POST /api/v1/convert/{id}/cancel` - Cancel active conversion
 
 ### Templates
 - `POST /api/v1/templates` - Create a new template
@@ -170,6 +196,20 @@ Run tests with:
 pytest
 ```
 
+### Performance Testing
+
+Run performance tests with:
+```bash
+pytest performance/
+```
+
+### Security Testing
+
+Run security tests with:
+```bash
+pytest security/
+```
+
 ### Database Migrations
 
 Create a new migration:
@@ -192,8 +232,11 @@ The API documentation is automatically generated and available at:
 
 - All endpoints are protected with JWT authentication
 - Passwords are hashed using bcrypt
-- CORS is configured for the frontend domain
+- CORS is configured for allowed frontend domains
 - Rate limiting is implemented for API endpoints
+- Input validation and sanitization
+- File type verification
+- Size limitations
 
 ## Error Handling
 
@@ -225,9 +268,9 @@ The system supports multiple recovery strategies for different types of errors:
 
 The error recovery system is implemented in the following components:
 
-- `utils/conversion_error_handler.py`: Defines error types and recovery strategies
-- `services/conversion_queue.py`: Integrates error recovery with the conversion queue
-- `services/markdown_converter.py`: Implements recovery strategies for conversion errors
+- `utils/error_handler.py`: Defines error types and recovery strategies
+- `conversion_queue.py`: Integrates error recovery with the conversion queue
+- `services/converter.py`: Implements recovery strategies for conversion errors
 
 #### Usage
 
@@ -238,11 +281,74 @@ The error recovery system is automatically integrated with the conversion queue:
 await conversion_queue.add_task(file_id, formats, template_id)
 ```
 
+## Performance Optimization
+
+The application includes several performance optimizations:
+
+### Batch Processing
+- Concurrent processing of multiple files
+- Configurable batch size
+- Efficient resource utilization
+- Progress tracking
+
+### Memory Management
+- Memory-efficient task management
+- Resource cleanup after completion
+- Concurrent processing with controlled limits
+- Status monitoring and reporting
+
+### Caching
+- Template caching with expiry
+- In-memory caching for frequently accessed data
+- Cache invalidation on updates
+- Cache size limits
+
+### Load Balancing
+- Horizontal scaling support
+- Load distribution
+- Health checks
+- Failover handling
+
 ## Logging
 
-Logging is configured in `core/logging.py`. Log levels:
+Logging is configured in `utils/logger.py`. Log levels:
 - DEBUG: Detailed information for debugging
 - INFO: General operational information
 - WARNING: Warning messages for potentially problematic situations
 - ERROR: Error messages for serious problems
-- CRITICAL: Critical messages for fatal errors 
+- CRITICAL: Critical messages for fatal errors
+
+## Monitoring
+
+The application includes comprehensive monitoring:
+
+### Performance Metrics
+- Batch processing statistics
+- Concurrent task tracking
+- Memory usage monitoring
+- Resource cleanup status
+- Queue performance metrics
+- API response times
+- Conversion history metrics
+- CPU and memory usage per conversion
+- Conversion success/failure rates
+- Average conversion durations
+
+### Conversion History Tracking
+The backend implements a robust conversion history tracking system that:
+- Records detailed metrics for each conversion job
+- Captures CPU and memory usage during conversion
+- Tracks conversion duration and outcome
+- Maintains error information for failed conversions
+- Supports pagination for efficient retrieval
+- Provides statistical aggregations (success rates, averages)
+- Enables filtering and searching capabilities
+- Supports CSV export for reporting
+
+### Health Checks
+- Database connectivity
+- File system access
+- External service availability
+- Resource utilization
+- Error rates
+- Response times 

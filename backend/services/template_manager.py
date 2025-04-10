@@ -7,38 +7,67 @@ import os
 import json
 import logging
 from typing import Dict, List, Optional, Any
-from datetime import datetime
+from datetime import datetime, timedelta
 from pathlib import Path
 from sqlalchemy.orm import Session
 
 from ..models import ConversionTemplate, User
 from ..utils.error_handler import AppError
+from ..models.template import Template
+from ..models.template_version import TemplateVersion
+from ..services.file_service import FileService
+from ..services.conversion_queue import ConversionQueue
 
 # Configure logging
 logger = logging.getLogger(__name__)
 
 class TemplateManager:
-    """Service for managing conversion templates."""
+    """Manages template operations with caching and optimized loading."""
     
-    def __init__(self, db: Session, templates_dir: str = "templates"):
+    def __init__(self, db: Session, file_service: FileService, conversion_queue: ConversionQueue):
         """
         Initialize the template manager.
         
         Args:
             db: Database session
-            templates_dir: Directory for storing template files
+            file_service: File service instance
+            conversion_queue: Conversion queue instance
         """
         self.db = db
-        self.templates_dir = templates_dir
-        self._ensure_templates_dir()
+        self.file_service = file_service
+        self.conversion_queue = conversion_queue
+        self._template_cache: Dict[str, Dict[str, Any]] = {}
+        self._cache_expiry: Dict[str, datetime] = {}
+        self._cache_duration = timedelta(minutes=5)
         
-    def _ensure_templates_dir(self):
-        """Ensure the templates directory exists."""
-        os.makedirs(self.templates_dir, exist_ok=True)
-        os.makedirs(os.path.join(self.templates_dir, "html"), exist_ok=True)
-        os.makedirs(os.path.join(self.templates_dir, "pdf"), exist_ok=True)
-        os.makedirs(os.path.join(self.templates_dir, "docx"), exist_ok=True)
-        os.makedirs(os.path.join(self.templates_dir, "css"), exist_ok=True)
+    def _get_cache_key(self, template_id: str, version: Optional[str] = None) -> str:
+        """Generate cache key for template."""
+        return f"{template_id}:{version or 'latest'}"
+        
+    def _is_cache_valid(self, cache_key: str) -> bool:
+        """Check if cached template is still valid."""
+        if cache_key not in self._cache_expiry:
+            return False
+        return datetime.now() < self._cache_expiry[cache_key]
+        
+    def _update_cache(self, template_id: str, data: Dict[str, Any], version: Optional[str] = None):
+        """Update template cache with expiry."""
+        cache_key = self._get_cache_key(template_id, version)
+        self._template_cache[cache_key] = data
+        self._cache_expiry[cache_key] = datetime.now() + self._cache_duration
+        
+    def _clear_cache(self, template_id: Optional[str] = None):
+        """Clear template cache."""
+        if template_id:
+            # Clear specific template cache
+            keys_to_remove = [k for k in self._template_cache.keys() if k.startswith(f"{template_id}:")]
+            for key in keys_to_remove:
+                self._template_cache.pop(key, None)
+                self._cache_expiry.pop(key, None)
+        else:
+            # Clear all cache
+            self._template_cache.clear()
+            self._cache_expiry.clear()
         
     def create_template(
         self,
@@ -101,33 +130,60 @@ class TemplateManager:
             logger.error(f"Error creating template: {str(e)}")
             raise AppError(status_code=500, message=f"Failed to create template: {str(e)}")
             
-    def get_template(self, template_id: int, user_id: int) -> Optional[ConversionTemplate]:
+    async def get_template(self, template_id: str, version: Optional[str] = None) -> Dict[str, Any]:
         """
-        Get a template by ID.
+        Get template with caching.
         
         Args:
-            template_id: ID of the template
-            user_id: ID of the user requesting the template
+            template_id: Template ID
+            version: Optional version number
             
         Returns:
-            Optional[ConversionTemplate]: Template if found and accessible
+            Template data
         """
-        try:
-            # Get template
-            template = self.db.query(ConversionTemplate).filter(ConversionTemplate.id == template_id).first()
-            if not template:
-                return None
-                
-            # Check access
-            if not template.is_public and template.owner_id != user_id:
-                return None
-                
-            return template
+        cache_key = self._get_cache_key(template_id, version)
+        
+        # Check cache first
+        if self._is_cache_valid(cache_key):
+            logger.debug(f"Cache hit for template {template_id} version {version}")
+            return self._template_cache[cache_key]
             
-        except Exception as e:
-            logger.error(f"Error getting template: {str(e)}")
-            return None
+        # Load from database
+        template = self.db.query(Template).filter(Template.id == template_id).first()
+        if not template:
+            raise ValueError(f"Template {template_id} not found")
             
+        # Get version
+        if version:
+            template_version = self.db.query(TemplateVersion).filter(
+                TemplateVersion.template_id == template_id,
+                TemplateVersion.version == version
+            ).first()
+        else:
+            template_version = self.db.query(TemplateVersion).filter(
+                TemplateVersion.template_id == template_id
+            ).order_by(TemplateVersion.version.desc()).first()
+            
+        if not template_version:
+            raise ValueError(f"Version {version} not found for template {template_id}")
+            
+        # Load template data
+        template_data = {
+            "id": template.id,
+            "name": template.name,
+            "description": template.description,
+            "version": template_version.version,
+            "content": template_version.content,
+            "metadata": template_version.metadata,
+            "created_at": template_version.created_at.isoformat(),
+            "updated_at": template_version.updated_at.isoformat()
+        }
+        
+        # Update cache
+        self._update_cache(template_id, template_data, version)
+        
+        return template_data
+        
     def get_user_templates(self, user_id: int) -> List[ConversionTemplate]:
         """
         Get all templates owned by a user.
@@ -157,110 +213,126 @@ class TemplateManager:
             logger.error(f"Error getting public templates: {str(e)}")
             return []
             
-    def update_template(
-        self,
-        template_id: int,
-        user_id: int,
-        name: Optional[str] = None,
-        description: Optional[str] = None,
-        is_public: Optional[bool] = None,
-        pandoc_options: Optional[Dict[str, Any]] = None,
-        html_template: Optional[str] = None,
-        pdf_template: Optional[str] = None,
-        docx_template: Optional[str] = None,
-        css_file: Optional[str] = None
-    ) -> Optional[ConversionTemplate]:
+    async def update_template(self, template_id: str, content: Optional[str] = None,
+                            name: Optional[str] = None, description: Optional[str] = None,
+                            metadata: Optional[Dict[str, Any]] = None) -> Dict[str, Any]:
         """
         Update a template.
         
         Args:
-            template_id: ID of the template to update
-            user_id: ID of the user updating the template
-            name: New template name
-            description: New template description
-            is_public: New public status
-            pandoc_options: New Pandoc options
-            html_template: New HTML template path
-            pdf_template: New PDF template path
-            docx_template: New DOCX template path
-            css_file: New CSS file path
+            template_id: Template ID
+            content: Optional new content
+            name: Optional new name
+            description: Optional new description
+            metadata: Optional new metadata
             
         Returns:
-            Optional[ConversionTemplate]: Updated template if successful
+            Updated template data
         """
         try:
-            # Get template
-            template = self.db.query(ConversionTemplate).filter(ConversionTemplate.id == template_id).first()
+            template = self.db.query(Template).filter(Template.id == template_id).first()
             if not template:
-                return None
+                raise ValueError(f"Template {template_id} not found")
                 
-            # Check ownership
-            if template.owner_id != user_id:
-                return None
-                
-            # Update fields
+            # Update template
             if name is not None:
                 template.name = name
             if description is not None:
                 template.description = description
-            if is_public is not None:
-                template.is_public = is_public
-            if pandoc_options is not None:
-                template.pandoc_options = json.dumps(pandoc_options)
-            if html_template is not None:
-                template.html_template = html_template
-            if pdf_template is not None:
-                template.pdf_template = pdf_template
-            if docx_template is not None:
-                template.docx_template = docx_template
-            if css_file is not None:
-                template.css_file = css_file
                 
-            # Save changes
-            template.updated_at = datetime.utcnow()
-            self.db.commit()
-            self.db.refresh(template)
+            # Get latest version
+            latest_version = self.db.query(TemplateVersion).filter(
+                TemplateVersion.template_id == template_id
+            ).order_by(TemplateVersion.version.desc()).first()
             
-            logger.info(f"Updated template: {template.id} - {template.name}")
-            return template
+            if not latest_version:
+                raise ValueError(f"No version found for template {template_id}")
+                
+            # Create new version if content or metadata changed
+            if content is not None or metadata is not None:
+                new_version = TemplateVersion(
+                    template_id=template_id,
+                    version=str(float(latest_version.version) + 0.1),
+                    content=content or latest_version.content,
+                    metadata=metadata or latest_version.metadata
+                )
+                self.db.add(new_version)
+                
+            self.db.commit()
+            
+            # Clear cache for this template
+            self._clear_cache(template_id)
+            
+            return await self.get_template(template_id)
             
         except Exception as e:
             self.db.rollback()
-            logger.error(f"Error updating template: {str(e)}")
-            return None
+            logger.error(f"Failed to update template: {str(e)}")
+            raise
             
-    def delete_template(self, template_id: int, user_id: int) -> bool:
+    async def delete_template(self, template_id: str):
         """
         Delete a template.
         
         Args:
-            template_id: ID of the template to delete
-            user_id: ID of the user deleting the template
-            
-        Returns:
-            bool: True if successful
+            template_id: Template ID
         """
         try:
-            # Get template
-            template = self.db.query(ConversionTemplate).filter(ConversionTemplate.id == template_id).first()
+            template = self.db.query(Template).filter(Template.id == template_id).first()
             if not template:
-                return False
+                raise ValueError(f"Template {template_id} not found")
                 
-            # Check ownership
-            if template.owner_id != user_id:
-                return False
-                
-            # Delete template
+            # Delete template and versions
+            self.db.query(TemplateVersion).filter(
+                TemplateVersion.template_id == template_id
+            ).delete()
             self.db.delete(template)
             self.db.commit()
             
-            logger.info(f"Deleted template: {template_id}")
-            return True
+            # Clear cache for this template
+            self._clear_cache(template_id)
             
         except Exception as e:
             self.db.rollback()
-            logger.error(f"Error deleting template: {str(e)}")
-            return False
+            logger.error(f"Failed to delete template: {str(e)}")
+            raise
+            
+    async def list_templates(self, include_versions: bool = False) -> List[Dict[str, Any]]:
+        """
+        List all templates.
+        
+        Args:
+            include_versions: Whether to include version information
+            
+        Returns:
+            List of templates
+        """
+        templates = self.db.query(Template).all()
+        result = []
+        
+        for template in templates:
+            template_data = {
+                "id": template.id,
+                "name": template.name,
+                "description": template.description,
+                "created_at": template.created_at.isoformat(),
+                "updated_at": template.updated_at.isoformat()
+            }
+            
+            if include_versions:
+                versions = self.db.query(TemplateVersion).filter(
+                    TemplateVersion.template_id == template.id
+                ).order_by(TemplateVersion.version.desc()).all()
+                
+                template_data["versions"] = [{
+                    "version": v.version,
+                    "created_at": v.created_at.isoformat(),
+                    "updated_at": v.updated_at.isoformat()
+                } for v in versions]
+                
+            result.append(template_data)
+            
+        return result
             
     def get_template_options(self, template_id: int, format: str) -> Dict[str, Any]:
         """

@@ -7,6 +7,7 @@ import logging
 import os
 import tempfile
 import time
+import asyncio
 from typing import List, Dict, Optional, Tuple, Any
 from pathlib import Path
 
@@ -25,6 +26,7 @@ from ..utils.conversion_error_handler import (
     get_error_recovery_strategy,
     apply_recovery_strategy
 )
+from ..utils.cache import Cache
 
 # Configure logging
 logger = logging.getLogger(__name__)
@@ -44,9 +46,10 @@ class MarkdownConverter:
         self.output_dir = output_dir
         self.max_retries = max_retries
         self.retry_delay = retry_delay
+        self.cache = Cache()
         os.makedirs(output_dir, exist_ok=True)
         
-    def convert(self, file_path: str, formats: List[str], template_id: Optional[int] = None) -> Dict[str, str]:
+    async def convert(self, file_path: str, formats: List[str], template_id: Optional[int] = None) -> Dict[str, str]:
         """
         Convert a markdown file to the specified formats.
         
@@ -82,16 +85,45 @@ class MarkdownConverter:
                     status_code=400
                 )
                 
-            # Create temporary directory for conversion
-            with tempfile.TemporaryDirectory() as temp_dir:
-                # Convert to each format
-                output_files = {}
-                for format in valid_formats:
-                    output_path = self._convert_to_format_with_retry(file_path, format, temp_dir, template_id)
-                    if output_path:
-                        output_files[format] = output_path
-                        
-                return output_files
+            # Check cache for each format
+            output_files = {}
+            formats_to_convert = []
+            
+            for format in valid_formats:
+                cache_key = self._get_cache_key(file_path, format, template_id)
+                cached_result = self.cache.get("conversions", cache_key)
+                
+                if cached_result and os.path.exists(cached_result["output_path"]):
+                    output_files[format] = cached_result["output_path"]
+                else:
+                    formats_to_convert.append(format)
+                    
+            if formats_to_convert:
+                # Create temporary directory for conversion
+                with tempfile.TemporaryDirectory() as temp_dir:
+                    # Convert formats in parallel
+                    conversion_tasks = [
+                        self._convert_to_format_with_retry(file_path, format, temp_dir, template_id)
+                        for format in formats_to_convert
+                    ]
+                    conversion_results = await asyncio.gather(*conversion_tasks, return_exceptions=True)
+                    
+                    # Process results
+                    for format, result in zip(formats_to_convert, conversion_results):
+                        if isinstance(result, Exception):
+                            logger.error(f"Error converting to {format}: {str(result)}")
+                            continue
+                            
+                        if result:
+                            output_files[format] = result
+                            # Cache the result
+                            cache_key = self._get_cache_key(file_path, format, template_id)
+                            self.cache.set("conversions", cache_key, {
+                                "output_path": result,
+                                "timestamp": time.time()
+                            })
+                            
+            return output_files
                 
         except Exception as e:
             # Handle the error and re-raise as ConversionError if needed
@@ -103,7 +135,22 @@ class MarkdownConverter:
                 status_code=error_response["status_code"]
             )
             
-    def _convert_to_format_with_retry(
+    def _get_cache_key(self, file_path: str, format: str, template_id: Optional[int] = None) -> str:
+        """
+        Generate a cache key for a conversion.
+        
+        Args:
+            file_path: Path to the input file
+            format: Target format
+            template_id: Optional template ID
+            
+        Returns:
+            str: Cache key
+        """
+        key_data = f"{file_path}:{format}:{template_id or 'default'}"
+        return self.cache._get_cache_key(key_data)
+        
+    async def _convert_to_format_with_retry(
         self, 
         file_path: str, 
         format: str, 
@@ -137,15 +184,15 @@ class MarkdownConverter:
             # Perform conversion based on format
             if format in ["html", "pdf", "docx"]:
                 # Use Pandoc for these formats
-                self._convert_with_pandoc(file_path, output_path, format, options)
+                await self._convert_with_pandoc(file_path, output_path, format, options)
             elif format == "png":
                 # Use Pandoc to convert to HTML first, then use a HTML-to-image converter
                 html_path = os.path.join(temp_dir, "temp.html")
-                self._convert_with_pandoc(file_path, html_path, "html", options)
-                self._convert_html_to_image(html_path, output_path)
+                await self._convert_with_pandoc(file_path, html_path, "html", options)
+                await self._convert_html_to_image(html_path, output_path)
             elif format in ["csv", "xlsx"]:
                 # Use pandas for these formats
-                self._convert_with_pandas(file_path, output_path, format)
+                await self._convert_with_pandas(file_path, output_path, format)
             else:
                 logger.error(f"Unsupported format: {format}")
                 return None
@@ -161,7 +208,7 @@ class MarkdownConverter:
                     logger.info(f"Retrying conversion with strategy: {strategy.value} (attempt {retry_count + 1}/{self.max_retries})")
                     
                     # Apply recovery strategy
-                    result, error = apply_recovery_strategy(
+                    result, error = await apply_recovery_strategy(
                         strategy,
                         self._convert_to_format_with_retry,
                         file_path,
@@ -178,7 +225,7 @@ class MarkdownConverter:
                             alternative_strategy = self._get_alternative_strategy(strategy)
                             if alternative_strategy:
                                 logger.info(f"Trying alternative strategy: {alternative_strategy.value}")
-                                return self._convert_to_format_with_retry(
+                                return await self._convert_to_format_with_retry(
                                     file_path, 
                                     format, 
                                     temp_dir, 
@@ -267,7 +314,7 @@ class MarkdownConverter:
         
         return simplified_options.get(format, {})
         
-    def _convert_with_pandoc(self, input_path: str, output_path: str, format: str, options: Dict[str, Any]) -> None:
+    async def _convert_with_pandoc(self, input_path: str, output_path: str, format: str, options: Dict[str, Any]) -> None:
         """
         Convert a file using Pandoc.
         
@@ -298,7 +345,7 @@ class MarkdownConverter:
                 status_code=500
             )
         
-    def _convert_html_to_image(self, html_path: str, output_path: str) -> None:
+    async def _convert_html_to_image(self, html_path: str, output_path: str) -> None:
         """
         Convert HTML to an image.
         
@@ -326,7 +373,7 @@ class MarkdownConverter:
                 status_code=500
             )
         
-    def _convert_with_pandas(self, input_path: str, output_path: str, format: str) -> None:
+    async def _convert_with_pandas(self, input_path: str, output_path: str, format: str) -> None:
         """
         Convert a file using pandas.
         
