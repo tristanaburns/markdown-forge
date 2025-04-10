@@ -37,11 +37,7 @@ The backend API provides:
 ```
 backend/
 ├── api/                 # API endpoints
-│   ├── v1/             # API version 1
-│   │   ├── files.py    # File operations endpoints
-│   │   ├── convert.py  # Conversion endpoints
-│   │   ├── templates.py # Template management endpoints
-│   │   └── auth.py     # Authentication endpoints
+│   └── routes/         # API route definitions
 ├── routers/             # FastAPI router definitions
 ├── models/              # Database models
 │   ├── file.py         # File model
@@ -53,14 +49,21 @@ backend/
 │   ├── file_service.py # File management service
 ├── utils/               # Utility functions
 │   ├── error_handler.py # Error handling utilities
+│   ├── conversion_error_handler.py # Conversion error handling
 │   ├── logger.py       # Logging configuration
-│   ├── validators.py   # Input validation utilities
+│   ├── cache.py        # Caching utilities
+│   ├── api_docs.py     # API documentation utilities
+│   ├── format_validator.py # Format validation utilities
+│   └── rate_limiter.py # Rate limiting utilities
+├── data/                # Data storage directory
+├── logs/                # Log files
 ├── conversion_queue.py  # Queue implementation for batch processing
 ├── models.py            # Database model definitions
 ├── config.py            # Configuration management
 ├── database.py          # Database connection handling
 ├── auth.py              # Authentication utilities
 ├── main.py              # FastAPI application entry point
+├── .env                 # Environment variables for development
 └── .env.example         # Example environment variables
 ```
 
@@ -106,6 +109,7 @@ The application uses Pydantic for configuration management. Key configuration fi
 - `PROJECT_NAME`: Name of the project
 - `VERSION`: Version of the application
 - `API_V1_STR`: API version prefix
+- `MARKDOWN_FORGE_ENV`: Environment (development, production)
 
 #### Security
 - `SECRET_KEY`: Secret key for JWT token generation
@@ -128,14 +132,33 @@ The application uses Pydantic for configuration management. Key configuration fi
 - `CACHE_TTL`: Template cache time-to-live in seconds
 - `CLEANUP_INTERVAL`: Interval for cleanup operations in seconds
 
+#### Logging
+- `LOG_LEVEL`: Logging level (DEBUG, INFO, WARNING, ERROR, CRITICAL)
+
 ## Running the Application
 
-1. Start the development server:
+### Using run.py Script
+
 ```bash
-uvicorn main:app --reload
+# Run just the backend
+python run.py run backend
+
+# Run with debug mode enabled
+python run.py run backend --debug
 ```
 
-2. Access the API documentation:
+### Using Uvicorn Directly
+
+```bash
+# Start the development server
+uvicorn backend.main:app --reload --host 0.0.0.0 --port 8000
+```
+
+### Using VS Code Launch Configuration
+
+Use the VS Code "Run and Debug" panel and select "Backend: FastAPI" configuration.
+
+### Access the API documentation:
 - Swagger UI: http://localhost:8000/docs
 - ReDoc: http://localhost:8000/redoc
 
@@ -174,6 +197,7 @@ The backend exposes a well-defined API contract that any frontend can implement:
 - `GET /api/v1/health` - Health check
 - `GET /api/v1/status` - System status
 - `GET /api/v1/config` - Configuration
+- `GET /api/v1/metrics` - System metrics
 
 ## Development
 
@@ -269,17 +293,9 @@ The system supports multiple recovery strategies for different types of errors:
 The error recovery system is implemented in the following components:
 
 - `utils/error_handler.py`: Defines error types and recovery strategies
+- `utils/conversion_error_handler.py`: Specialized error handling for conversions
 - `conversion_queue.py`: Integrates error recovery with the conversion queue
 - `services/converter.py`: Implements recovery strategies for conversion errors
-
-#### Usage
-
-The error recovery system is automatically integrated with the conversion queue:
-
-```python
-# The conversion queue automatically applies recovery strategies
-await conversion_queue.add_task(file_id, formats, template_id)
-```
 
 ## Performance Optimization
 
@@ -311,12 +327,20 @@ The application includes several performance optimizations:
 
 ## Logging
 
-Logging is configured in `utils/logger.py`. Log levels:
+Logging is configured in `utils/logger.py`. The application supports both synchronous and asynchronous logging:
+
+### Log Levels
 - DEBUG: Detailed information for debugging
 - INFO: General operational information
 - WARNING: Warning messages for potentially problematic situations
 - ERROR: Error messages for serious problems
 - CRITICAL: Critical messages for fatal errors
+
+### Key Features
+- **Structured Logging**: Logs include structured context information
+- **Asynchronous Support**: Asynchronous logging for FastAPI endpoints
+- **File Rotation**: Logs are automatically rotated to prevent file growth
+- **Environment Detection**: Debug logging in development environment
 
 ## Monitoring
 

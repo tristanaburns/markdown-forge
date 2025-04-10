@@ -65,32 +65,66 @@ Markdown Forge follows a component-based architecture with strict separation of 
 markdown-forge/
 ├── app/                    # Frontend Flask application
 │   ├── static/             # Static assets
+│   │   ├── css/            # CSS stylesheets
+│   │   ├── js/             # JavaScript files
+│   │   ├── uploads/        # Upload storage
+│   │   └── converted/      # Converted file storage
 │   ├── templates/          # HTML templates
+│   │   ├── components/     # Reusable components
+│   │   └── errors/         # Error pages
 │   ├── utils/              # Utility modules
 │   │   ├── logger.py       # Logging utility
 │   │   ├── config.py       # Configuration utility
+│   │   ├── api_client.py   # API client
+│   │   ├── error_handler.py # Error handling
 │   │   └── route_helpers.py # Route helper utilities
+│   ├── routes/             # Route definitions
+│   ├── services/           # Frontend services
+│   ├── models/             # Frontend data models
+│   ├── views/              # Standalone views
+│   ├── controllers/        # Request handlers
+│   ├── logs/               # Log files
 │   ├── tests/              # Frontend tests
 │   └── main.py             # Flask application entry point
 ├── backend/                # Backend FastAPI application
 │   ├── api/                # API endpoints
-│   ├── models/             # Data models
+│   │   └── routes/         # API routes
+│   ├── routers/            # FastAPI router definitions
+│   ├── models/             # Database models
 │   ├── services/           # Business logic
 │   ├── utils/              # Utility functions
+│   │   ├── logger.py       # Logging configuration
+│   │   ├── error_handler.py # Error handling
+│   │   ├── cache.py        # Caching utilities
+│   │   └── api_docs.py     # API documentation
+│   ├── data/               # Data storage
+│   ├── logs/               # Log files
 │   ├── tests/              # Backend tests
+│   ├── conversion_queue.py # Conversion queue implementation
+│   ├── models.py           # Data models
+│   ├── config.py           # Configuration
+│   ├── database.py         # Database connection
+│   ├── auth.py             # Authentication
 │   └── main.py             # FastAPI application entry point
 ├── requirements/           # Project requirements and documentation
-├── tests/                  # Integration and e2e tests
+│   ├── project-plan.md     # Project planning
+│   └── project-requirements.md # Project requirements
+├── docs/                   # Documentation
+│   └── api/                # API documentation
 ├── docker/                 # Docker configuration
-├── scripts/                # Utility scripts
-├── requirements.txt        # Python dependencies
+│   └── Dockerfile          # Multi-stage Dockerfile
+├── .vscode/                # VS Code configuration
+│   └── launch.json         # Launch configurations
+├── docker-compose.yml      # Docker Compose configuration
+├── .env.development        # Development environment variables
 ├── run.py                  # Run script for development
+├── requirements.txt        # Python dependencies
 └── README.md               # This file
 ```
 
 ## Prerequisites
 
-- Python 3.8+
+- Python 3.10+
 - Node.js 18+ (for frontend development)
 - Docker and Docker Compose (for containerized deployment)
 - Pandoc 2.11+ (for document conversion)
@@ -106,6 +140,9 @@ python run.py setup
 
 # Run both frontend and backend
 python run.py run
+
+# Run with debug mode enabled
+python run.py run --debug
 
 # Run just the frontend or backend
 python run.py run frontend
@@ -136,9 +173,12 @@ source venv/bin/activate
 # Install dependencies
 pip install -r requirements.txt
 
+# Set environment variables
+cp app/.env.example app/.env
+
 # Run the Flask application
 cd app
-flask run
+flask run --debug
 ```
 
 ### Backend (FastAPI)
@@ -156,9 +196,12 @@ source venv/bin/activate
 # Install dependencies
 pip install -r requirements.txt
 
+# Set environment variables
+cp backend/.env.example backend/.env
+
 # Run the FastAPI application
 cd backend
-uvicorn main:app --reload
+uvicorn main:app --reload --host=0.0.0.0 --port=8000
 ```
 
 ### Database Setup
@@ -168,28 +211,40 @@ uvicorn main:app --reload
 createdb markdown_forge
 
 # Run migrations
+cd backend
 alembic upgrade head
 ```
 
 ## Development
 
-### Frontend
+### Using VS Code
+
+The project includes VS Code launch configurations for easy development:
+
+1. Open the project in VS Code
+2. Go to the Run and Debug panel
+3. Select one of the launch configurations:
+   - "Frontend: Flask" - Run just the frontend
+   - "Backend: FastAPI" - Run just the backend
+   - "Full Stack: Frontend + Backend" - Run both services
+
+### Debug Mode
+
+Enable debug logging for detailed information:
 
 ```bash
-# Start the Flask development server
-cd app
-flask run --debug
-```
+# Run with debug mode enabled
+python run.py run --debug
 
-### Backend
-
-```bash
-# Start the FastAPI development server
-cd backend
-uvicorn main:app --reload
+# Or set the environment variables manually
+export LOG_LEVEL=DEBUG
+export FLASK_DEBUG=1
+export MARKDOWN_FORGE_ENV=development
 ```
 
 ## Docker Deployment
+
+The project includes a Docker setup for containerized deployment with separate services for the frontend, backend, and PostgreSQL database.
 
 ```bash
 # Build and start the containers
@@ -198,9 +253,27 @@ docker-compose up -d
 # View logs
 docker-compose logs -f
 
+# View logs for a specific service
+docker-compose logs -f frontend
+docker-compose logs -f backend
+docker-compose logs -f postgres
+
 # Stop the containers
 docker-compose down
+
+# Stop the containers and remove volumes
+docker-compose down -v
 ```
+
+### Docker Configuration
+
+The `docker-compose.yml` file defines three services:
+
+1. **postgres**: PostgreSQL database service
+2. **backend**: FastAPI backend service
+3. **frontend**: Flask frontend service
+
+Each service is configured with appropriate environment variables, volumes, and network settings to ensure proper communication between components.
 
 ## Testing
 
@@ -230,26 +303,6 @@ The API documentation is available at `/docs` when the backend is running:
 
 - http://localhost:8000/docs (Swagger UI)
 - http://localhost:8000/redoc (ReDoc)
-
-### API Endpoints
-
-| Endpoint | Method | Description |
-|----------|--------|-------------|
-| `/api/files` | GET | List all files |
-| `/api/files` | POST | Upload a file |
-| `/api/files/{file_id}` | GET | Get file details |
-| `/api/files/{file_id}` | PUT | Update file |
-| `/api/files/{file_id}` | DELETE | Delete file |
-| `/api/convert` | POST | Convert a file |
-| `/api/batch` | POST | Batch convert files |
-| `/api/templates` | GET | List templates |
-| `/api/templates` | POST | Create template |
-| `/api/templates/{template_id}` | GET | Get template |
-| `/api/health` | GET | System health check |
-| `/api/queue/status` | GET | Get queue status |
-| `/api/queue/stats` | GET | Get queue statistics |
-| `/api/conversions/active` | GET | Get active conversions |
-| `/api/system/metrics` | GET | Get system metrics |
 
 ## Logging and Performance Tracking
 

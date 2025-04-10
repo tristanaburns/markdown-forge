@@ -109,24 +109,111 @@ The configuration utility provides a structured way to manage application settin
 - **Type Safety**: Uses dataclasses to provide type checking for configuration values
 - **Hierarchy**: Organized hierarchy of configuration settings (API, Logging, Files, etc.)
 - **Directory Creation**: Automatically creates required directories
+- **Environment Variable Support**: Loads settings from environment variables
 
 ### Usage
 
 ```python
-from utils.config import Config
-
-# Load configuration
-config = Config()
+from utils.config import config
 
 # Access configuration values
 api_url = config.api.base_url
 log_level = config.logging.level
+debug_mode = config.debug
 
-# Create a custom configuration
-custom_config = Config(
-    debug=True,
-    api=ApiConfig(base_url="http://custom-api.example.com")
-)
+# Configuration is automatically loaded from .env file and environment variables
+```
+
+## API Client (`api_client.py`)
+
+The API client utility provides a wrapper for making HTTP requests to the backend API.
+
+### Features
+
+- **Automatic Retries**: Retries failed requests with exponential backoff
+- **Error Handling**: Comprehensive error handling and logging
+- **Response Validation**: Validates API responses
+- **Authentication**: Handles authentication token management
+- **Performance Tracking**: Tracks and logs API request performance
+
+### Usage
+
+```python
+from utils.api_client import ApiClient
+
+# Create API client
+api_client = ApiClient()
+
+# Make API requests
+response = api_client.get("/files")
+response = api_client.post("/convert", json={"file_id": "123", "format": "pdf"})
+response = api_client.put("/files/123", json={"name": "new_name.md"})
+response = api_client.delete("/files/123")
+```
+
+## API Utilities (`api.py`)
+
+The API utilities module provides helper functions for API-related operations.
+
+### Features
+
+- **Response Parsing**: Functions for parsing API responses
+- **URL Building**: Utilities for building API URLs
+- **Error Handling**: Centralized error handling for API operations
+- **Batch Processing**: Utilities for batch API operations
+
+### Usage
+
+```python
+from utils.api import build_api_url, handle_api_error, parse_api_response
+
+# Build API URL
+url = build_api_url("/files/123")
+
+# Parse API response
+data = parse_api_response(response)
+
+# Handle API error
+try:
+    response = requests.get(url)
+    response.raise_for_status()
+except Exception as e:
+    error_message = handle_api_error(e)
+```
+
+## Error Handler (`error_handler.py`)
+
+The error handler utility provides centralized error handling for the application.
+
+### Features
+
+- **Standardized Error Handling**: Consistent error handling across the application
+- **User-Friendly Messages**: Converts technical errors to user-friendly messages
+- **Error Categorization**: Categorizes errors by type and severity
+- **Error Recovery**: Provides recovery strategies for common errors
+- **Error Tracking**: Tracks errors for monitoring and reporting
+
+### Usage
+
+```python
+from utils.error_handler import handle_error, ErrorCategory
+
+try:
+    # Some operation that might fail
+    result = process_file(file_id)
+except Exception as e:
+    # Handle the error
+    error_message, error_category = handle_error(e)
+    
+    if error_category == ErrorCategory.NETWORK:
+        # Handle network error
+        show_network_error_message(error_message)
+    elif error_category == ErrorCategory.VALIDATION:
+        # Handle validation error
+        show_validation_error(error_message)
+    else:
+        # Handle other errors
+        show_generic_error(error_message)
 ```
 
 ## Testing
@@ -137,4 +224,7 @@ All utilities have corresponding test files in the `tests` directory. Run tests 
 pytest app/tests/test_logger.py
 pytest app/tests/test_route_helpers.py
 pytest app/tests/test_config.py
+pytest app/tests/test_api_client.py
+pytest app/tests/test_api.py
+pytest app/tests/test_error_handler.py
 ``` 

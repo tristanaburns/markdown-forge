@@ -1,3 +1,6 @@
+# Base requirements - core dependencies for both development and production
+# ===========================================================================
+
 # Flask (Frontend)
 Flask==2.3.3
 Werkzeug==2.3.7
@@ -22,29 +25,26 @@ email-validator==2.0.0
 python-jose[cryptography]==3.3.0
 passlib[bcrypt]==1.7.4
 
-# Database
+# Database - SQLAlchemy works with SQLite for development without PostgreSQL
 SQLAlchemy==2.0.20
 alembic==1.12.0
-psycopg2-binary==2.9.7
-asyncpg==0.28.0
 
-# Async
-asyncio==3.4.3
+# Async utilities
 aiofiles==23.1.0
 aiocache==0.12.1
 cachetools==5.3.1
 
-# Conversion tools
-pandoc==2.3
-pypandoc==1.11
+# Core conversion tools
 markdown==3.4.4
-weasyprint==59.0
+pypandoc==1.12
 python-docx==0.8.11
 PyPDF2==3.0.1
 pillow==10.0.0
 python-frontmatter==1.0.0
+openpyxl==3.1.2
+csvkit==1.1.1
 
-# Utilities
+# Essential utilities
 python-dotenv==1.0.0
 requests==2.31.0
 pytz==2023.3
@@ -54,7 +54,17 @@ lxml==4.9.3
 pyjwt==2.8.0
 cryptography==41.0.3
 psutil==5.9.5
-cachetools==5.3.1
+
+# Monitoring and logging
+structlog==24.1.0
+python-json-logger==2.0.7
+
+# Security
+bcrypt==4.1.2
+
+# Development requirements - for local development environments
+# ===========================================================================
+# Install with: pip install -r requirements.txt[dev]
 
 # Testing
 pytest==7.4.0
@@ -63,50 +73,41 @@ pytest-cov==4.1.0
 httpx==0.24.1
 pytest-mock==3.11.1
 
-# Markdown Processing
-markdown2>=2.4.12
-pypandoc>=1.13.0
+# Code quality
+black==24.1.0
+isort==5.13.2
+flake8==7.0.0
+mypy==1.8.0
 
-# Document Conversion
-pdfkit>=1.0.0
-html2image>=2.0.3
-reportlab>=4.0.8
+# Production/Container requirements - for deployment
+# ===========================================================================
+# Install with: pip install -r requirements.txt[prod]
 
-# HTTP and API
-httpx>=0.26.0
-aiofiles>=23.2.1
+# PostgreSQL drivers - automatically detected based on environment
+# For Windows local development: pip install psycopg2-binary==2.9.7
+# In Docker/container environments: pip install psycopg2==2.9.7
+asyncpg==0.28.0 
 
-# Testing and Development
-black>=24.1.0
-isort>=5.13.2
-flake8>=7.0.0
-mypy>=1.8.0
-
-# Security
-bcrypt>=4.1.2
-
-# Monitoring and Logging
-structlog>=24.1.0
-python-json-logger>=2.0.7
-
-# Image Processing
-Pillow>=10.2.0
-cairosvg>=2.7.1
-
-# System Dependencies (commented as they are installed via package manager)
-# pandoc >= 3.1.3
-# wkhtmltopdf >= 0.12.6
-# texlive-xetex
-# texlive-fonts-recommended
-# libpangocairo-1.0-0
-# fonts-liberation
-# xvfb
-# chromium-browser
-
-# Conversion tools
-pypandoc==1.12
+# Additional conversion tools for production
 pdfkit==1.0.0
-python-docx==0.8.11
 html2image==2.0.1
-openpyxl==3.1.2
-csvkit==1.1.1 
+weasyprint==59.0
+cairosvg==2.7.1
+
+# System Dependencies (commented as they are typically installed via package manager)
+# ===========================================================================
+# Windows: Install these manually or via package managers like Chocolatey
+# Docker: Include these in your Dockerfile
+# 
+# - pandoc >= 2.11.0
+# - wkhtmltopdf >= 0.12.6
+# - PostgreSQL client/dev libraries
+# - texlive-xetex (for PDF generation)
+# - texlive-fonts-recommended
+# - libpangocairo-1.0-0
+# - fonts-liberation
+# - xvfb (for headless browser operations)
+# - chromium-browser (for HTML to PDF conversion)
+
+# Conditional requirements - automatically handled by run.py script
+# =========================================================================== 

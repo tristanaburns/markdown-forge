@@ -45,6 +45,8 @@ class ConversionConfig:
 class Config:
     """Main configuration class."""
     debug: bool = False
+    app_name: str = "markdown-forge-frontend"
+    environment: str = "development"
     api: ApiConfig = field(default_factory=ApiConfig)
     logging: LoggingConfig = field(default_factory=LoggingConfig)
     file: FileConfig = field(default_factory=FileConfig)
@@ -58,9 +60,28 @@ class Config:
         os.makedirs(self.file.temp_dir, exist_ok=True)
         os.makedirs(self.conversion.output_dir, exist_ok=True)
         
+        # Load from environment variables
+        self._load_from_env()
+        
         # Set debug mode
         if self.debug:
             self.logging.level = "DEBUG"
+    
+    def _load_from_env(self):
+        """Load configuration from environment variables."""
+        # Debug mode
+        self.debug = os.getenv("FLASK_DEBUG", "0") == "1"
+        
+        # Environment
+        self.environment = os.getenv("FLASK_ENV", "production")
+        
+        # API
+        if api_url := os.getenv("API_BASE_URL"):
+            self.api.base_url = api_url
+        
+        # Logging
+        if log_level := os.getenv("LOG_LEVEL"):
+            self.logging.level = log_level.upper()
     
     @classmethod
     def from_dict(cls, data: Dict[str, Any]) -> 'Config':
@@ -135,6 +156,8 @@ class Config:
         """
         return {
             'debug': self.debug,
+            'app_name': self.app_name,
+            'environment': self.environment,
             'api': {
                 'base_url': self.api.base_url,
                 'timeout': self.api.timeout,

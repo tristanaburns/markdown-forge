@@ -115,7 +115,7 @@ def get_async_logger(name: str, level: Optional[int] = None) -> AsyncLogger:
     return AsyncLogger(name, level)
 
 def setup_logging(
-    level: str = 'INFO',
+    level: str = None,
     log_file: Optional[str] = None
 ) -> None:
     """
@@ -140,8 +140,19 @@ def setup_logging(
     for handler in root_logger.handlers[:]:
         root_logger.removeHandler(handler)
     
-    # Set level
-    level_value = getattr(logging, level.upper(), logging.INFO)
+    # Get level from environment variable or use provided level
+    if level is None:
+        level = os.getenv("LOG_LEVEL", "INFO")
+    
+    # Set lower case for uniformity
+    level = level.upper()
+    
+    # Set development mode to DEBUG if environment is development and level not explicitly set
+    if os.getenv("MARKDOWN_FORGE_ENV") == "development" and level == "INFO":
+        level = "DEBUG"
+    
+    # Convert to logging level
+    level_value = getattr(logging, level, logging.INFO)
     root_logger.setLevel(level_value)
     
     # Default log file

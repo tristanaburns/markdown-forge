@@ -34,22 +34,32 @@ app/
 │   │   ├── components/ # Component-specific scripts
 │   │   ├── utils/     # Utility scripts
 │   │   └── conversion_history.js # Scripts for conversion history page
-│   └── img/          # Images and icons
+│   ├── converted/    # Storage for converted files
+│   └── uploads/      # Storage for uploaded files
 ├── templates/         # Jinja2 templates
 │   ├── base.html     # Base template with common elements
 │   ├── upload.html   # File upload page
 │   ├── files.html    # File management page
 │   ├── preview.html  # File preview page
 │   ├── conversion_history.html # Conversion history dashboard
-│   └── components/   # Reusable template components
+│   ├── components/   # Reusable template components
+│   └── errors/       # Error page templates
 ├── views/             # Standalone HTML views
 ├── services/          # Frontend services
 ├── utils/             # Frontend utilities
-│   └── config.py     # Configuration management
+│   ├── config.py     # Configuration management
+│   ├── logger.py     # Logging and context tracking
+│   ├── api.py        # API utilities
+│   ├── api_client.py # API client for backend communication
+│   ├── error_handler.py # Error handling utilities
+│   └── route_helpers.py # Route helper utilities
 ├── routes/            # Route definitions
 ├── middleware/        # Request/response middleware
+├── data/              # Data storage
 ├── models/            # Frontend data models
 ├── controllers/       # Request handlers
+├── config/            # Configuration files
+├── logs/              # Log files
 └── main.py            # Flask application entry point
 ```
 
@@ -87,16 +97,33 @@ The application uses environment variables for configuration. Key configuration 
 - `FLASK_DEBUG`: Debug mode (0, 1)
 - `API_BASE_URL`: URL of the backend API (the only connection to the backend)
 - `SECRET_KEY`: Secret key for Flask session
+- `LOG_LEVEL`: Logging level (DEBUG, INFO, WARNING, ERROR, CRITICAL)
 
 ## Running the Application
 
-1. Start the development server:
+### Using run.py Script
+
 ```bash
-flask run --debug
+# Run just the frontend
+python run.py run frontend
+
+# Run with debug mode enabled
+python run.py run frontend --debug
 ```
 
-2. Access the application:
-- Web Interface: http://localhost:5000
+### Using Flask Directly
+
+```bash
+# Start the development server
+flask run --debug
+
+# Access the application
+# Web Interface: http://localhost:5000
+```
+
+### Using VS Code Launch Configuration
+
+Use the VS Code "Run and Debug" panel and select "Frontend: Flask" configuration.
 
 ## Features
 
@@ -169,14 +196,6 @@ The application includes robust batch processing capabilities:
 4. Click "Upload and Convert"
 5. Monitor progress in real-time
 6. View and download results when processing completes
-
-#### API Endpoints
-
-The batch processing functionality uses the following API endpoints:
-
-- `POST /api/convert`: Convert a single file with support for multiple output formats
-- `POST /api/convert/batch`: Process multiple files with support for batching
-- `GET /api/convert/status`: Get the current status of the conversion queue
 
 ## Development
 
@@ -253,16 +272,21 @@ The application uses a standardized error handling approach:
 
 ## Logging
 
-Logging is configured in `utils/logger.py`. Log levels:
-- DEBUG: Detailed information for debugging
-- INFO: General operational information
-- WARNING: Warning messages for potentially problematic situations
-- ERROR: Error messages for serious problems
-- CRITICAL: Critical messages for fatal errors
+Logging is configured in `utils/logger.py`. The application uses a structured logging system with context tracking and performance metrics:
+
+- **Context Tracking**: Track request context across function calls
+- **Performance Metrics**: Track timing and resource usage
+- **Structured JSON Logging**: Log events in structured JSON format
+- **Log Levels**:
+  - DEBUG: Detailed information for debugging
+  - INFO: General operational information
+  - WARNING: Warning messages for potentially problematic situations
+  - ERROR: Error messages for serious problems
+  - CRITICAL: Critical messages for fatal errors
 
 ## Performance Monitoring
 
-The application includes performance monitoring:
+The application includes comprehensive performance monitoring:
 - Batch processing metrics
 - Concurrent task tracking
 - Memory usage monitoring
@@ -270,4 +294,6 @@ The application includes performance monitoring:
 - Queue performance metrics
 - API response times
 - Conversion history statistics
-- System resource utilization (CPU, memory, disk) 
+- System resource utilization (CPU, memory, disk)
+- Request/response timing
+- Route performance tracking 
