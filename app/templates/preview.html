@@ -1,0 +1,219 @@
+{% extends "base.html" %}
+
+{% block title %}Preview - {{ filename }} - Markdown Forge{% endblock %}
+
+{% block extra_css %}
+<style>
+    .preview-toolbar {
+        position: sticky;
+        top: 0;
+        z-index: 1020;
+        background-color: var(--light-color);
+        border-bottom: 1px solid #dee2e6;
+        padding: 1rem 0;
+        margin-bottom: 1rem;
+    }
+
+    .preview-toolbar .btn-group {
+        margin-right: 1rem;
+    }
+
+    .preview-container {
+        background-color: white;
+        border-radius: 0.375rem;
+        padding: 2rem;
+        box-shadow: 0 2px 4px rgba(0, 0, 0, 0.1);
+    }
+
+    .comparison-view {
+        display: grid;
+        grid-template-columns: 1fr 1fr;
+        gap: 2rem;
+    }
+
+    @media (max-width: 768px) {
+        .comparison-view {
+            grid-template-columns: 1fr;
+        }
+    }
+
+    .comparison-panel {
+        background-color: white;
+        border-radius: 0.375rem;
+        padding: 1rem;
+        box-shadow: 0 2px 4px rgba(0, 0, 0, 0.1);
+    }
+
+    .comparison-panel h5 {
+        margin-bottom: 1rem;
+        padding-bottom: 0.5rem;
+        border-bottom: 1px solid #dee2e6;
+    }
+</style>
+{% endblock %}
+
+{% block content %}
+<div class="preview-toolbar">
+    <div class="d-flex justify-content-between align-items-center flex-wrap gap-3">
+        <h4 class="mb-0">
+            <i class="fas fa-file-alt me-2"></i>{{ filename }}
+        </h4>
+        <div class="d-flex gap-2 flex-wrap">
+            <!-- Download Buttons -->
+            <div class="btn-group">
+                <button type="button" class="btn btn-primary dropdown-toggle" data-bs-toggle="dropdown">
+                    <i class="fas fa-download me-2"></i>Download
+                </button>
+                <ul class="dropdown-menu">
+                    <li>
+                        <a class="dropdown-item" href="{{ url_for('download', type='html', filename=filename) }}">
+                            <i class="fab fa-html5 me-2"></i>HTML
+                        </a>
+                    </li>
+                    <li>
+                        <a class="dropdown-item" href="{{ url_for('download', type='pdf', filename=filename) }}">
+                            <i class="far fa-file-pdf me-2"></i>PDF
+                        </a>
+                    </li>
+                    <li>
+                        <a class="dropdown-item" href="{{ url_for('download', type='docx', filename=filename) }}">
+                            <i class="far fa-file-word me-2"></i>DOCX
+                        </a>
+                    </li>
+                    <li>
+                        <a class="dropdown-item" href="{{ url_for('download', type='png', filename=filename) }}">
+                            <i class="far fa-file-image me-2"></i>PNG
+                        </a>
+                    </li>
+                    <li><hr class="dropdown-divider"></li>
+                    <li>
+                        <a class="dropdown-item" href="{{ url_for('download', type='md', filename=filename) }}">
+                            <i class="fas fa-file-alt me-2"></i>Original Markdown
+                        </a>
+                    </li>
+                </ul>
+            </div>
+
+            <!-- Conversion Method Toggle -->
+            <div class="btn-group" role="group">
+                <input type="radio" class="btn-check" name="conversionMethod" id="native" value="native" {% if not use_pandoc %}checked{% endif %}>
+                <label class="btn btn-outline-primary" for="native">
+                    <i class="fas fa-cogs me-2"></i>Native
+                </label>
+                <input type="radio" class="btn-check" name="conversionMethod" id="pandoc" value="pandoc" {% if use_pandoc %}checked{% endif %}>
+                <label class="btn btn-outline-primary" for="pandoc">
+                    <i class="fas fa-book me-2"></i>Pandoc
+                </label>
+            </div>
+
+            <!-- View Mode Toggle -->
+            <div class="btn-group" role="group">
+                <input type="radio" class="btn-check" name="viewMode" id="singleView" value="single" checked>
+                <label class="btn btn-outline-primary" for="singleView">
+                    <i class="fas fa-square me-2"></i>Single
+                </label>
+                <input type="radio" class="btn-check" name="viewMode" id="comparisonView" value="comparison">
+                <label class="btn btn-outline-primary" for="comparisonView">
+                    <i class="fas fa-columns me-2"></i>Compare
+                </label>
+            </div>
+
+            <!-- Actions -->
+            <a href="{{ url_for('files') }}" class="btn btn-outline-secondary">
+                <i class="fas fa-arrow-left me-2"></i>Back to Files
+            </a>
+        </div>
+    </div>
+</div>
+
+<!-- Single View -->
+<div id="singleViewContainer" class="preview-container markdown-content">
+    {{ html_content|safe }}
+</div>
+
+<!-- Comparison View -->
+<div id="comparisonViewContainer" class="comparison-view" style="display: none;">
+    <div class="comparison-panel">
+        <h5>Native Conversion</h5>
+        <div class="markdown-content" id="nativeContent">
+            {{ native_html|safe }}
+        </div>
+    </div>
+    <div class="comparison-panel">
+        <h5>Pandoc Conversion</h5>
+        <div class="markdown-content" id="pandocContent">
+            {{ pandoc_html|safe }}
+        </div>
+    </div>
+</div>
+{% endblock %}
+
+{% block extra_js %}
+<script src="{{ url_for('static', filename='js/preview.js') }}"></script>
+<script>
+document.addEventListener('DOMContentLoaded', function() {
+    const singleViewContainer = document.getElementById('singleViewContainer');
+    const comparisonViewContainer = document.getElementById('comparisonViewContainer');
+    const viewModeInputs = document.querySelectorAll('input[name="viewMode"]');
+    const conversionMethodInputs = document.querySelectorAll('input[name="conversionMethod"]');
+
+    // Handle view mode toggle
+    viewModeInputs.forEach(input => {
+        input.addEventListener('change', function() {
+            if (this.value === 'single') {
+                singleViewContainer.style.display = 'block';
+                comparisonViewContainer.style.display = 'none';
+            } else {
+                singleViewContainer.style.display = 'none';
+                comparisonViewContainer.style.display = 'grid';
+            }
+        });
+    });
+
+    // Handle conversion method toggle
+    conversionMethodInputs.forEach(input => {
+        input.addEventListener('change', async function() {
+            try {
+                MarkdownForge.showLoading('Converting...');
+                
+                const response = await fetch(`{{ url_for('convert') }}`, {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json'
+                    },
+                    body: JSON.stringify({
+                        filename: '{{ filename }}',
+                        use_pandoc: this.value === 'pandoc'
+                    })
+                });
+
+                if (!response.ok) {
+                    throw new Error(`HTTP error! status: ${response.status}`);
+                }
+
+                const result = await response.json();
+                
+                if (result.success) {
+                    // Update the preview content
+                    document.querySelector('#singleViewContainer').innerHTML = result.html_content;
+                    
+                    // Refresh syntax highlighting
+                    document.querySelectorAll('pre code').forEach((block) => {
+                        hljs.highlightBlock(block);
+                    });
+                    
+                    MarkdownForge.showAlert('Conversion completed successfully', 'success');
+                } else {
+                    throw new Error(result.message || 'Conversion failed');
+                }
+            } catch (error) {
+                console.error('Conversion failed:', error);
+                MarkdownForge.showAlert('Failed to convert document. Please try again.', 'danger');
+            } finally {
+                MarkdownForge.hideLoading();
+            }
+        });
+    });
+});
+</script>
+{% endblock %} 

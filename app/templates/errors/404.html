@@ -1,0 +1,30 @@
+{% extends "base.html" %}
+{% from "components/error.html" import error_page %}
+
+{% block title %}404 - Page Not Found{% endblock %}
+
+{% block content %}
+{{ error_page(
+    code="404",
+    title="Page Not Found",
+    message="The page you are looking for might have been removed, had its name changed, or is temporarily unavailable.",
+    action_message="If you believe this is an error, please contact the administrator."
+) }}
+{% endblock %}
+
+{% block extra_css %}
+<style>
+    .error-container {
+        padding: 3rem;
+        border-radius: 0.5rem;
+        background-color: #f8f9fa;
+        box-shadow: 0 0.5rem 1rem rgba(0, 0, 0, 0.15);
+    }
+    
+    .display-1 {
+        font-size: 8rem;
+        font-weight: 700;
+        margin-bottom: 1rem;
+    }
+</style>
+{% endblock %} 

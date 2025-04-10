@@ -1,0 +1,30 @@
+{% extends "base.html" %}
+{% from "components/error.html" import error_page %}
+
+{% block title %}500 - Internal Server Error{% endblock %}
+
+{% block content %}
+{{ error_page(
+    code="500",
+    title="Internal Server Error",
+    message="Something went wrong on our end. We're working to fix the issue.",
+    action_message="If the problem persists, please contact the administrator."
+) }}
+{% endblock %}
+
+{% block extra_css %}
+<style>
+    .error-container {
+        padding: 3rem;
+        border-radius: 0.5rem;
+        background-color: #f8f9fa;
+        box-shadow: 0 0.5rem 1rem rgba(0, 0, 0, 0.15);
+    }
+    
+    .display-1 {
+        font-size: 8rem;
+        font-weight: 700;
+        margin-bottom: 1rem;
+    }
+</style>
+{% endblock %} 

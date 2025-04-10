@@ -1,0 +1,68 @@
+{% extends "base.html" %}
+
+{% block title %}Upload - Markdown Forge{% endblock %}
+
+{% block extra_css %}
+<link href="{{ url_for('static', path='css/upload.css') }}" rel="stylesheet">
+{% endblock %}
+
+{% block content %}
+<div class="row justify-content-center">
+    <div class="col-md-8">
+        <div class="card">
+            <div class="card-header">
+                <h2 class="card-title mb-0">Upload Markdown File</h2>
+            </div>
+            <div class="card-body">
+                <form id="uploadForm" enctype="multipart/form-data">
+                    <!-- Drop Zone -->
+                    <div class="drop-zone mb-4" id="dropZone">
+                        <div class="drop-zone-content">
+                            <i class="fas fa-cloud-upload-alt fa-3x mb-3"></i>
+                            <p class="mb-2">Drag and drop your Markdown file here</p>
+                            <p class="text-muted small">or</p>
+                            <label class="btn btn-primary">
+                                Browse Files
+                                <input type="file" id="fileInput" accept=".md,.markdown" class="d-none">
+                            </label>
+                        </div>
+                    </div>
+
+                    <!-- File Info -->
+                    <div id="fileInfo" class="d-none">
+                        <div class="alert alert-info">
+                            <h5 class="alert-heading">Selected File</h5>
+                            <p id="fileName" class="mb-0"></p>
+                        </div>
+                    </div>
+
+                    <!-- Conversion Options -->
+                    <div class="mb-4">
+                        <h5>Conversion Options</h5>
+                        <div class="form-check">
+                            <input class="form-check-input" type="checkbox" id="usePandoc" checked>
+                            <label class="form-check-label" for="usePandoc">
+                                Use Pandoc for enhanced conversion
+                            </label>
+                        </div>
+                    </div>
+
+                    <!-- Progress Bar -->
+                    <div class="progress mb-3 d-none" id="progressBar">
+                        <div class="progress-bar progress-bar-striped progress-bar-animated" role="progressbar"></div>
+                    </div>
+
+                    <!-- Submit Button -->
+                    <button type="submit" class="btn btn-primary w-100" id="submitBtn" disabled>
+                        Upload and Convert
+                    </button>
+                </form>
+            </div>
+        </div>
+    </div>
+</div>
+{% endblock %}
+
+{% block extra_js %}
+<script src="{{ url_for('static', path='js/upload.js') }}"></script>
+{% endblock %} 
