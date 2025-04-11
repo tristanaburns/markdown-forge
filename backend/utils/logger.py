@@ -1,292 +1,562 @@
+"""
+Logging utility for the backend with enhanced visibility and structured logging.
+"""
+
 import logging
+import logging.handlers
 import os
-import sys
+import time
 import json
+import traceback
+import threading
+import uuid
+import inspect
+import functools
+import sys
+from typing import Optional, Dict, Any, List, Union, Callable
 from datetime import datetime
-from typing import Optional, Dict, Any
-import asyncio
+from ..config import config
 
-def get_logger(name: str, level: Optional[int] = None) -> logging.Logger:
-    """
-    Get a configured logger instance for the given name.
+class ContextTracker:
+    """Track request context for structured logging."""
     
-    Args:
-        name: Name of the logger (typically __name__)
-        level: Optional logging level to override the default level
+    _local = threading.local()
+    
+    @classmethod
+    def get_context(cls) -> Dict[str, Any]:
+        """Get the current request context.
         
-    Returns:
-        Configured logger instance
-    """
-    # Create logger
-    logger = logging.getLogger(name)
-    
-    # Don't duplicate handlers
-    if logger.handlers:
-        return logger
-    
-    # Set level from environment or default to INFO
-    env_level = os.getenv("LOG_LEVEL", "INFO").upper()
-    default_level = getattr(logging, env_level, logging.INFO)
-    
-    # Override with provided level if specified
-    log_level = level if level is not None else default_level
-    logger.setLevel(log_level)
-    
-    # Create log directory if it doesn't exist
-    log_dir = os.path.join(os.getcwd(), "logs")
-    os.makedirs(log_dir, exist_ok=True)
-    
-    # Log file with date
-    today = datetime.now().strftime("%Y-%m-%d")
-    log_file = os.path.join(log_dir, f"app_{today}.log")
-    
-    # Create file handler
-    file_handler = logging.FileHandler(log_file)
-    file_handler.setLevel(log_level)
-    
-    # Create console handler with the same level
-    console_handler = logging.StreamHandler(sys.stdout)
-    console_handler.setLevel(log_level)
-    
-    # Create formatters
-    file_formatter = logging.Formatter(
-        "[%(asctime)s] [%(levelname)s] [%(name)s] %(message)s"
-    )
-    console_formatter = logging.Formatter(
-        "[%(asctime)s] [%(levelname)s] [%(name)s] %(message)s"
-    )
-    
-    # Add formatters to handlers
-    file_handler.setFormatter(file_formatter)
-    console_handler.setFormatter(console_formatter)
-    
-    # Add handlers to logger
-    logger.addHandler(file_handler)
-    logger.addHandler(console_handler)
-    
-    return logger
-
-class AsyncLogger:
-    """
-    Asynchronous logger wrapper for logging in async contexts.
-    """
-    
-    def __init__(self, name: str, level: Optional[int] = None):
+        Returns:
+            Dict containing the current request context
         """
-        Initialize the async logger.
+        if not hasattr(cls._local, "context"):
+            cls._local.context = {"request_id": str(uuid.uuid4())}
+        return cls._local.context
+    
+    @classmethod
+    def set_context(cls, **kwargs) -> None:
+        """Set context values for the current request.
         
         Args:
-            name: Name of the logger
-            level: Optional logging level
+            **kwargs: Key-value pairs to add to the context
         """
-        self.logger = get_logger(name, level)
+        context = cls.get_context()
+        context.update(kwargs)
     
-    async def debug(self, message: str, *args, **kwargs):
-        """Log debug message asynchronously"""
-        self.logger.debug(message, *args, **kwargs)
-    
-    async def info(self, message: str, *args, **kwargs):
-        """Log info message asynchronously"""
-        self.logger.info(message, *args, **kwargs)
-    
-    async def warning(self, message: str, *args, **kwargs):
-        """Log warning message asynchronously"""
-        self.logger.warning(message, *args, **kwargs)
-    
-    async def error(self, message: str, *args, **kwargs):
-        """Log error message asynchronously"""
-        self.logger.error(message, *args, **kwargs)
-    
-    async def critical(self, message: str, *args, **kwargs):
-        """Log critical message asynchronously"""
-        self.logger.critical(message, *args, **kwargs)
-
-def get_async_logger(name: str, level: Optional[int] = None) -> AsyncLogger:
-    """
-    Get an asynchronous logger instance.
-    
-    Args:
-        name: Name of the logger
-        level: Optional logging level
+    @classmethod
+    def add_context(cls, **kwargs) -> None:
+        """Add additional context values for the current request.
         
-    Returns:
-        AsyncLogger instance
-    """
-    return AsyncLogger(name, level)
+        Args:
+            **kwargs: Key-value pairs to add to the context
+        """
+        cls.set_context(**kwargs)
+    
+    @classmethod
+    def clear_context(cls) -> None:
+        """Clear the current request context."""
+        if hasattr(cls._local, "context"):
+            delattr(cls._local, "context")
 
-def setup_logging(
-    level: str = None,
-    log_file: Optional[str] = None
-) -> None:
-    """
-    Set up logging configuration for the entire application.
+class StructuredLogRecord(logging.LogRecord):
+    """Extended LogRecord with structured data support."""
     
-    Args:
-        level: Logging level (DEBUG, INFO, WARNING, ERROR, CRITICAL)
-        log_file: Optional custom log file path
-    """
-    # Create logs directory
-    log_dir = os.path.join(os.getcwd(), "logs")
-    os.makedirs(log_dir, exist_ok=True)
-    
-    # Configure client logs directory
-    client_log_dir = os.path.join(log_dir, "client")
-    os.makedirs(client_log_dir, exist_ok=True)
-    
-    # Configure root logger
-    root_logger = logging.getLogger()
-    
-    # Clean existing handlers
-    for handler in root_logger.handlers[:]:
-        root_logger.removeHandler(handler)
-    
-    # Get level from environment variable or use provided level
-    if level is None:
-        level = os.getenv("LOG_LEVEL", "INFO")
-    
-    # Set lower case for uniformity
-    level = level.upper()
-    
-    # Set development mode to DEBUG if environment is development and level not explicitly set
-    if os.getenv("MARKDOWN_FORGE_ENV") == "development" and level == "INFO":
-        level = "DEBUG"
-    
-    # Convert to logging level
-    level_value = getattr(logging, level, logging.INFO)
-    root_logger.setLevel(level_value)
-    
-    # Default log file
-    if log_file is None:
-        today = datetime.now().strftime("%Y-%m-%d")
-        log_file = os.path.join(log_dir, f"app_{today}.log")
-    
-    # Console handler
-    console_handler = logging.StreamHandler(sys.stdout)
-    console_handler.setLevel(level_value)
-    console_formatter = logging.Formatter(
-        "[%(asctime)s] [%(levelname)s] [%(name)s] %(message)s"
-    )
-    console_handler.setFormatter(console_formatter)
-    root_logger.addHandler(console_handler)
-    
-    # File handler
-    file_handler = logging.FileHandler(log_file)
-    file_handler.setLevel(level_value)
-    file_formatter = logging.Formatter(
-        "[%(asctime)s] [%(levelname)s] [%(name)s] %(message)s"
-    )
-    file_handler.setFormatter(file_formatter)
-    root_logger.addHandler(file_handler)
-    
-    # Log setup completion
-    logging.info(f"Logging initialized at level {level}")
-    logging.info(f"Log file: {log_file}")
+    def __init__(self, *args, **kwargs):
+        """Initialize with standard LogRecord arguments."""
+        super().__init__(*args, **kwargs)
+        # Add context to the log record
+        self.context = ContextTracker.get_context()
+        
+        # Add additional useful fields
+        self.timestamp = datetime.now().isoformat()
+        self.app_name = config.app_name
+        self.environment = config.environment
+        self.thread_id = threading.get_ident()
+        self.thread_name = threading.current_thread().name
+        
+        # Add function information if available
+        frame = inspect.currentframe()
+        if frame:
+            try:
+                # Get the caller's frame
+                caller_frame = frame.f_back
+                if caller_frame:
+                    # Get function information
+                    self.function_name = caller_frame.f_code.co_name
+                    self.module_name = caller_frame.f_code.co_filename
+                    self.line_number = caller_frame.f_lineno
+            finally:
+                # Always delete the frame to avoid memory leaks
+                del frame
 
-async def log_to_file(
-    level: str,
-    message: str,
-    source: str,
-    details: Dict = None,
-    timestamp: str = None
-) -> None:
-    """
-    Log client-side messages to dedicated log files.
+class StructuredJsonFormatter(logging.Formatter):
+    """Formatter that outputs JSON strings after parsing the log record."""
     
-    Args:
-        level: Log level (debug, info, warning, error, critical)
-        message: Log message
-        source: Source of the log (component that generated it)
-        details: Additional context information
-        timestamp: Timestamp in ISO format
-    """
-    # Create logs directory
-    log_dir = os.path.join(os.getcwd(), "logs", "client")
-    os.makedirs(log_dir, exist_ok=True)
-    
-    # Format timestamp
-    if timestamp is None:
-        timestamp = datetime.now().isoformat()
-    
-    # Format log entry
-    log_entry = {
-        "timestamp": timestamp,
-        "level": level,
-        "source": source,
-        "message": message,
-        "details": details or {}
-    }
-    
-    # Get log file path
-    today = datetime.now().strftime("%Y-%m-%d")
-    client_log_file = os.path.join(log_dir, f"client_{today}.log")
-    
-    # Write log to file
-    try:
-        with open(client_log_file, "a") as f:
-            f.write(json.dumps(log_entry) + "\n")
-    except Exception as e:
-        logging.error(f"Error writing client log to file: {str(e)}")
+    def format(self, record: logging.LogRecord) -> str:
+        """Format the log record as a JSON string."""
+        # Create a dict with the log record attributes
+        log_data = {
+            "timestamp": getattr(record, "timestamp", datetime.now().isoformat()),
+            "level": record.levelname,
+            "logger": record.name,
+            "message": record.getMessage(),
+            "module": getattr(record, "module_name", record.module),
+            "function": getattr(record, "function_name", record.funcName),
+            "line": getattr(record, "line_number", record.lineno),
+            "thread_id": getattr(record, "thread_id", threading.get_ident()),
+            "thread_name": getattr(record, "thread_name", threading.current_thread().name),
+            "app_name": getattr(record, "app_name", config.app_name),
+            "environment": getattr(record, "environment", config.environment),
+        }
+        
+        # Add context if available
+        if hasattr(record, "context"):
+            log_data["context"] = record.context
+        
+        # Add the custom data if available
+        if hasattr(record, 'data'):
+            log_data.update(record.data)
+        
+        # Add exception info if available
+        if record.exc_info:
+            log_data["exception"] = self.formatException(record.exc_info)
+        
+        return json.dumps(log_data)
 
-def get_client_logs(
-    limit: int = 100,
-    level: Optional[str] = None,
-    source: Optional[str] = None
-) -> list:
-    """
-    Retrieve client logs with optional filtering.
+class BackendLogger:
+    """Backend logger class with context tracking and performance metrics."""
     
-    Args:
-        limit: Maximum number of logs to return
-        level: Filter by log level
-        source: Filter by log source
+    def __init__(self, name: str = "backend"):
+        """Initialize logger.
         
-    Returns:
-        List of log entries
-    """
-    try:
-        logs = []
-        log_dir = os.path.join(os.getcwd(), "logs", "client")
+        Args:
+            name: Logger name
+        """
+        # Use our custom LogRecord factory
+        logging.setLogRecordFactory(StructuredLogRecord)
         
-        if not os.path.exists(log_dir):
-            return logs
+        self.logger = logging.getLogger(name)
+        self.logger.setLevel(config.logging.level)
         
-        # Get log files (reverse chronological order)
-        log_files = sorted(
-            [f for f in os.listdir(log_dir) if f.startswith("client_")],
-            reverse=True
+        # Remove existing handlers to avoid duplicates when reloading
+        if self.logger.hasHandlers():
+            self.logger.handlers.clear()
+        
+        # Create formatters
+        json_formatter = StructuredJsonFormatter()
+        console_formatter = logging.Formatter(
+            "%(asctime)s - %(levelname)s - [%(name)s] %(message)s"
         )
         
-        # Process each log file
-        for log_file in log_files:
-            file_path = os.path.join(log_dir, log_file)
+        # Create file handler
+        log_dir = os.path.dirname(config.logging.file)
+        os.makedirs(log_dir, exist_ok=True)
+        
+        file_handler = logging.handlers.RotatingFileHandler(
+            config.logging.file,
+            maxBytes=config.logging.max_size,
+            backupCount=config.logging.backup_count
+        )
+        file_handler.setFormatter(json_formatter)
+        file_handler.setLevel(config.logging.level)
+        
+        # Create console handler
+        console_handler = logging.StreamHandler()
+        console_handler.setFormatter(console_formatter)
+        console_handler.setLevel(config.logging.level)
+        
+        # Add handlers
+        self.logger.addHandler(file_handler)
+        self.logger.addHandler(console_handler)
+        
+        # Performance metrics tracking
+        self._timers = {}
+        
+        # Function call tracking
+        self._call_stack = []
+    
+    def debug(self, message: str, **kwargs) -> None:
+        """Log a debug message.
+        
+        Args:
+            message: The message to log
+            **kwargs: Additional context to include in the log
+        """
+        self.logger.debug(message, extra=kwargs)
+    
+    def info(self, message: str, **kwargs) -> None:
+        """Log an info message.
+        
+        Args:
+            message: The message to log
+            **kwargs: Additional context to include in the log
+        """
+        self.logger.info(message, extra=kwargs)
+    
+    def warning(self, message: str, **kwargs) -> None:
+        """Log a warning message.
+        
+        Args:
+            message: The message to log
+            **kwargs: Additional context to include in the log
+        """
+        self.logger.warning(message, extra=kwargs)
+    
+    def error(self, message: str, **kwargs) -> None:
+        """Log an error message.
+        
+        Args:
+            message: The message to log
+            **kwargs: Additional context to include in the log
+        """
+        self.logger.error(message, extra=kwargs)
+    
+    def critical(self, message: str, **kwargs) -> None:
+        """Log a critical message.
+        
+        Args:
+            message: The message to log
+            **kwargs: Additional context to include in the log
+        """
+        self.logger.critical(message, extra=kwargs)
+    
+    def exception(self, message: str, **kwargs) -> None:
+        """Log an exception with traceback.
+        
+        Args:
+            message: The message to log
+            **kwargs: Additional context to include in the log
+        """
+        # Get the stack trace
+        stack_trace = traceback.format_stack()
+        
+        # Add stack trace to kwargs
+        data = kwargs.get('data', {})
+        data['stack_trace'] = stack_trace
+        kwargs['data'] = data
+        
+        # Log the error with the current exception info
+        self.logger.error(message, exc_info=True, extra=kwargs)
+    
+    def set_context(self, **kwargs) -> None:
+        """Set context values for the current request.
+        
+        Args:
+            **kwargs: Key-value pairs to add to the context
+        """
+        ContextTracker.set_context(**kwargs)
+    
+    def add_context(self, **kwargs) -> None:
+        """Add additional context values for the current request.
+        
+        Args:
+            **kwargs: Key-value pairs to add to the context
+        """
+        ContextTracker.add_context(**kwargs)
+    
+    def clear_context(self) -> None:
+        """Clear the current request context."""
+        ContextTracker.clear_context()
+    
+    def start_timer(self, name: str) -> None:
+        """Start a performance timer.
+        
+        Args:
+            name: Name of the timer
+        """
+        self._timers[name] = time.time()
+    
+    def stop_timer(self, name: str) -> float:
+        """Stop a performance timer and return the elapsed time.
+        
+        Args:
+            name: Name of the timer
             
-            with open(file_path, "r") as f:
-                lines = f.readlines()
-                
-                # Process lines in reverse (newest first)
-                for line in reversed(lines):
-                    try:
-                        entry = json.loads(line.strip())
-                        
-                        # Apply filters
-                        if level and entry.get("level") != level:
-                            continue
-                            
-                        if source and entry.get("source") != source:
-                            continue
-                        
-                        # Add to logs
-                        logs.append(entry)
-                        
-                        # Check limit
-                        if len(logs) >= limit:
-                            return logs
-                    except:
-                        # Skip invalid lines
-                        continue
+        Returns:
+            Elapsed time in seconds
+        """
+        if name not in self._timers:
+            return 0.0
         
-        return logs
+        elapsed = time.time() - self._timers[name]
+        del self._timers[name]
+        return elapsed
+    
+    def log_metric(self, name: str, value: float, unit: str = "ms") -> None:
+        """Log a performance metric.
         
-    except Exception as e:
-        logging.error(f"Error retrieving client logs: {str(e)}")
-        return [] 
+        Args:
+            name: Name of the metric
+            value: Value of the metric
+            unit: Unit of the metric
+        """
+        self.logger.info(
+            f"Metric: {name} = {value} {unit}",
+            extra={"metric": {"name": name, "value": value, "unit": unit}}
+        )
+    
+    def log_function_entry(self, func: Callable, *args, **kwargs) -> None:
+        """Log function entry with parameters for enhanced debugging.
+        
+        Args:
+            func: The function to log
+            *args: Function arguments
+            **kwargs: Function keyword arguments
+        """
+        # Extract function information
+        func_name = func.__name__
+        module_name = func.__module__
+        
+        # Process function arguments for logging
+        params = {
+            "args": [],
+            "kwargs": {}
+        }
+        
+        # Process positional arguments
+        for arg in args:
+            try:
+                # Convert to string representation, limiting the size
+                arg_str = str(arg)
+                if len(arg_str) > 1000:
+                    arg_str = arg_str[:1000] + "..."
+                params["args"].append(arg_str)
+            except Exception:
+                params["args"].append("<non-serializable>")
+        
+        # Process keyword arguments
+        for key, value in kwargs.items():
+            try:
+                # Convert to string representation, limiting the size
+                value_str = str(value)
+                if len(value_str) > 1000:
+                    value_str = value_str[:1000] + "..."
+                params["kwargs"][key] = value_str
+            except Exception:
+                params["kwargs"][key] = "<non-serializable>"
+        
+        # Generate a request ID for tracking this function call
+        request_id = str(uuid.uuid4())
+        
+        # Add function to call stack with start time
+        self._call_stack.append({
+            "function": func_name,
+            "module": module_name,
+            "start_time": time.time(),
+            "request_id": request_id
+        })
+        
+        # Log the function entry
+        self.logger.debug(
+            f"Entering function: {module_name}.{func_name}",
+            extra={
+                'data': {
+                    "event_type": "entry",
+                    "params": params,
+                    "request_id": request_id
+                }
+            }
+        )
+        
+        return request_id
+    
+    def log_function_exit(self, func: Callable, return_value: Any = None) -> None:
+        """Log function exit with return value and execution time.
+        
+        Args:
+            func: The function to log
+            return_value: The return value from the function
+        """
+        # Extract function information
+        func_name = func.__name__
+        module_name = func.__module__
+        
+        # Get the call info from the stack
+        call_info = None
+        for call in reversed(self._call_stack):
+            if call["function"] == func_name and call["module"] == module_name:
+                call_info = call
+                self._call_stack.remove(call)
+                break
+        
+        if not call_info:
+            # No matching call found, just log with minimal info
+            self.logger.debug(
+                f"Exiting function: {module_name}.{func_name}",
+                extra={
+                    'data': {
+                        "event_type": "exit",
+                        "return_value": str(return_value)[:1000] if return_value is not None else None
+                    }
+                }
+            )
+            return
+        
+        # Calculate execution time
+        end_time = time.time()
+        execution_time = end_time - call_info["start_time"]
+        execution_time_ms = execution_time * 1000
+        
+        # Process return value for logging
+        if return_value is not None:
+            try:
+                # Convert to string representation, limiting the size
+                return_value_str = str(return_value)
+                if len(return_value_str) > 1000:
+                    return_value_str = return_value_str[:1000] + "..."
+            except Exception:
+                return_value_str = "<non-serializable>"
+        else:
+            return_value_str = None
+        
+        # Log the function exit
+        self.logger.debug(
+            f"Exiting function: {module_name}.{func_name}",
+            extra={
+                'data': {
+                    "event_type": "exit",
+                    "return_value": return_value_str,
+                    "performance": {
+                        "execution_time_ms": execution_time_ms
+                    },
+                    "request_id": call_info["request_id"]
+                }
+            }
+        )
+    
+    def log_step(self, step_name: str, details: Dict[str, Any] = None) -> None:
+        """Log a step in the execution flow.
+        
+        Args:
+            step_name: Name of the step
+            details: Additional details about the step
+        """
+        self.logger.debug(
+            f"Step: {step_name}",
+            extra={
+                "step": {
+                    "name": step_name,
+                    "details": details or {},
+                    "call_stack": self._call_stack.copy()
+                }
+            }
+        )
+    
+    def log_request(self, method: str, path: str, status_code: int, elapsed_ms: float) -> None:
+        """Log HTTP request details.
+        
+        Args:
+            method: HTTP method
+            path: Request path
+            status_code: HTTP status code
+            elapsed_ms: Request processing time in milliseconds
+        """
+        self.info(
+            f"{method} {path} {status_code} {elapsed_ms:.2f}ms",
+            extra={
+                "http_request": {
+                    "method": method,
+                    "path": path,
+                    "status_code": status_code,
+                    "elapsed_ms": elapsed_ms
+                }
+            }
+        )
+    
+    def log_batch_operation(self, operation: str, total: int, success: int, failed: int) -> None:
+        """Log batch operation details.
+        
+        Args:
+            operation: Operation name
+            total: Total number of items
+            success: Number of successful items
+            failed: Number of failed items
+        """
+        self.info(
+            f"Batch {operation}: {success}/{total} successful, {failed} failed",
+            extra={
+                "batch_operation": {
+                    "operation": operation,
+                    "total": total,
+                    "success": success,
+                    "failed": failed
+                }
+            }
+        )
+
+def log_function(func: Callable) -> Callable:
+    """Decorator for automatic function entry/exit and exception logging."""
+    
+    @functools.wraps(func)
+    def wrapper(*args, **kwargs):
+        # Get the logger
+        if hasattr(func, "__self__"):
+            # Method on an object
+            logger = get_logger(func.__self__.__class__.__name__)
+        else:
+            # Normal function
+            logger = get_logger(func.__module__)
+        
+        try:
+            # Log function entry
+            request_id = logger.log_function_entry(func, *args, **kwargs)
+            
+            # Execute the function
+            start_time = time.time()
+            result = func(*args, **kwargs)
+            
+            # Log function exit
+            logger.log_function_exit(func, result)
+            
+            return result
+        except Exception as e:
+            # Log the exception with custom attributes
+            logger.logger.error(
+                f"Error in function {func.__name__}: {str(e)}",
+                exc_info=True,
+                extra={
+                    'data': {
+                        "event_type": "error",
+                        "function": func.__name__,
+                        "module": func.__module__,
+                        "error_type": e.__class__.__name__,
+                        "error_message": str(e)
+                    }
+                }
+            )
+            raise
+    
+    return wrapper
+
+def get_logger(name: str = "backend") -> BackendLogger:
+    """Get a logger instance.
+    
+    Args:
+        name: Logger name
+        
+    Returns:
+        Logger instance
+    """
+    return BackendLogger(name)
+
+def configure_logger(log_level: str = "INFO", log_file: str = "backend.log") -> None:
+    """Configure the global logger with custom settings.
+    Used primarily for testing or custom initialization.
+    
+    Args:
+        log_level: Logging level (DEBUG, INFO, WARNING, ERROR, CRITICAL)
+        log_file: Path to log file
+    """
+    # Get the numeric log level
+    level = getattr(logging, log_level.upper(), logging.INFO)
+    
+    # Override config settings for logging
+    config.logging.level = level
+    config.logging.file = log_file
+    
+    # Re-initialize the default logger
+    global logger
+    logger = BackendLogger()
+
+# Create default logger instance
+logger = BackendLogger() 

@@ -1,119 +1,212 @@
-# Markdown Forge Docker Configuration
+# Markdown Forge - Docker Configuration
 
-This directory contains Docker configuration files for containerizing the Markdown Forge application.
+This directory contains the Docker configuration for the Markdown Forge project, including a multi-stage Dockerfile for building optimized container images.
 
-## Overview
+## Docker Architecture
 
-Markdown Forge uses Docker for containerized deployment, providing:
+The Markdown Forge project uses a multi-container architecture with three main services:
 
-- Consistent environment across development and production
-- Isolation of services
-- Easy scaling and management
-- Simplified deployment
+1. **Frontend (Flask)**: Web interface for user interaction
+2. **Backend (FastAPI)**: API service for file operations and conversions
+3. **PostgreSQL**: Database for storing file metadata and conversion history
 
-## Files
+## Dockerfile
 
-- **Dockerfile**: Multi-stage build configuration for the application image
-- **docker-compose.yml**: (In parent directory) Orchestration configuration for running all services
+The `Dockerfile` in this directory is a multi-stage build that:
 
-## Docker Image
+1. **Builds the application code** in a builder stage
+2. **Creates a minimal runtime image** with only the necessary dependencies
+3. **Sets up a non-root user** for security
+4. **Configures the application** with appropriate environment variables
 
-The Dockerfile creates a multi-stage build that:
+### Key Features
 
-1. **First Stage (Builder)**:
-   - Installs build dependencies
-   - Compiles Python packages with C extensions
-   - Creates wheel packages for all dependencies
+- **Multi-stage build** to minimize image size
+- **Layer optimization** for efficient caching
+- **Security hardening** with non-root user
+- **Environment configuration** via build arguments
+- **Health checks** for container monitoring
+- **Volume configuration** for persistent data
 
-2. **Second Stage (Runtime)**:
-   - Installs runtime dependencies including:
-     - PostgreSQL client
-     - Pandoc for document conversion
-     - wkhtmltopdf for HTML-to-PDF conversion
-     - LaTeX for PDF generation
-     - Cairo for SVG support
-     - Font libraries
-   - Copies wheels from the builder stage
-   - Sets up the application code
-   - Creates necessary directories
-   - Configures a non-root user for security
+## Docker Compose
 
-## Services
+The project uses Docker Compose for orchestrating the multi-container application. The `docker-compose.yml` file in the root directory defines:
 
-The docker-compose.yml file in the parent directory defines three services:
-
-1. **PostgreSQL Database**:
-   - Uses postgres:15 image
-   - Persists data in a named volume
-   - Includes health checks
-
-2. **Backend (FastAPI)**:
-   - Built from the Dockerfile
-   - Runs the FastAPI application
-   - Connects to the PostgreSQL database
-   - Exposes port 8000
-
-3. **Frontend (Flask)**:
-   - Built from the same Dockerfile
-   - Runs the Flask application
-   - Communicates with the backend
-   - Exposes port 5000
+- Service dependencies and startup order
+- Environment variables for each service
+- Volume mappings for persistent data
+- Network configuration
+- Health checks
+- Resource constraints
 
 ## Usage
 
-From the parent directory:
+### Building the Images
 
 ```bash
-# Build and start all services
+# Build all services
+docker-compose build
+
+# Build a specific service
+docker-compose build frontend
+docker-compose build backend
+```
+
+### Running the Application
+
+```bash
+# Start all services
 docker-compose up -d
 
-# View logs
+# Start a specific service
+docker-compose up -d frontend
+docker-compose up -d backend
+```
+
+### Viewing Logs
+
+```bash
+# View logs for all services
 docker-compose logs -f
 
-# View logs for specific service
-docker-compose logs -f backend
+# View logs for a specific service
 docker-compose logs -f frontend
+docker-compose logs -f backend
 docker-compose logs -f postgres
+```
 
+### Stopping the Application
+
+```bash
 # Stop all services
 docker-compose down
 
-# Rebuild images (after code changes)
-docker-compose build
-
-# Stop services and remove volumes
+# Stop and remove volumes
 docker-compose down -v
 ```
 
-## Development with Docker
+## Configuration
 
-For development, you can use Docker Compose with volume mounts to enable live code reloading:
+### Environment Variables
+
+The Docker setup uses environment variables for configuration. These can be set in:
+
+- `.env` files
+- Docker Compose environment section
+- Command line arguments
+
+Key environment variables:
+
+#### Frontend
+- `FLASK_APP`: Path to the Flask application
+- `FLASK_ENV`: Environment (development, production)
+- `FLASK_DEBUG`: Debug mode (0, 1)
+- `API_BASE_URL`: URL of the backend API
+- `SECRET_KEY`: Secret key for Flask session
+
+#### Backend
+- `PROJECT_NAME`: Name of the project
+- `VERSION`: Version of the application
+- `API_V1_STR`: API version prefix
+- `POSTGRES_SERVER`: PostgreSQL server host
+- `POSTGRES_USER`: PostgreSQL user
+- `POSTGRES_PASSWORD`: PostgreSQL password
+- `POSTGRES_DB`: PostgreSQL database name
+- `SECRET_KEY`: Secret key for JWT token generation
+
+#### Database
+- `POSTGRES_USER`: Database user
+- `POSTGRES_PASSWORD`: Database password
+- `POSTGRES_DB`: Database name
+
+### Volumes
+
+The Docker setup uses volumes for persistent data:
+
+- `frontend_data`: Stores uploaded files for the frontend
+- `backend_data`: Stores converted files for the backend
+- `postgres_data`: Stores the PostgreSQL database
+
+### Networks
+
+The Docker setup uses a custom network for service communication:
+
+- `markdown_forge_network`: Network for inter-service communication
+
+## Development
+
+### Development Mode
+
+For development, you can use the development configuration:
 
 ```bash
-# Start services with development configuration
-docker-compose -f docker-compose.yml -f docker-compose.dev.yml up
+# Start in development mode
+docker-compose -f docker-compose.yml -f docker-compose.dev.yml up -d
+```
+
+This configuration includes:
+- Volume mounts for live code reloading
+- Debug mode enabled
+- Additional development tools
+
+### Debugging
+
+To debug the application:
+
+```bash
+# Attach to a container
+docker-compose exec frontend bash
+docker-compose exec backend bash
+
+# View logs
+docker-compose logs -f
 ```
 
 ## Production Deployment
 
-For production deployment:
+For production deployment, use the production configuration:
 
-1. Build the Docker image:
 ```bash
-docker build -t markdown-forge:latest -f docker/Dockerfile .
-```
-
-2. Configure environment variables for production in `.env.production`
-
-3. Deploy using Docker Compose:
-```bash
+# Start in production mode
 docker-compose -f docker-compose.yml -f docker-compose.prod.yml up -d
 ```
 
-## Customization
+This configuration includes:
+- Optimized for performance
+- Security hardening
+- Production-ready settings
 
-To customize the Docker configuration:
+## Troubleshooting
 
-1. Edit the Dockerfile to add additional dependencies or change build steps
-2. Create custom docker-compose override files for different environments
-3. Modify environment variables in the docker-compose.yml file or .env files 
+### Common Issues
+
+1. **Database Connection Issues**
+   - Check if the PostgreSQL container is running
+   - Verify database credentials
+   - Check network connectivity
+
+2. **File Permission Issues**
+   - Check volume permissions
+   - Verify user permissions in containers
+
+3. **Service Startup Issues**
+   - Check logs for error messages
+   - Verify environment variables
+   - Check service dependencies
+
+### Health Checks
+
+The Docker setup includes health checks for all services:
+
+```bash
+# Check health status
+docker-compose ps
+```
+
+## Security Considerations
+
+- All services run as non-root users
+- Sensitive data is stored in environment variables
+- Network access is restricted to necessary ports
+- Regular security updates are applied
+- Secrets are managed securely 

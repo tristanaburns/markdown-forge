@@ -1,20 +1,42 @@
 # Project: Markdown Forge - Requirements & Implementation Specification
 
-## Version: 1.5
+## Version: 1.7
 ## Author: Tristan
 ## Date: April 10, 2024
-## Last Updated: April 12, 2024
+## Last Updated: April 14, 2024
 
 ## Core Architecture Principles
 
-### Component Autonomy
-1. **Strict Separation of Concerns**: The application must maintain a strict separation between frontend (UI) and backend (API) components.
-2. **Independent Operation**: All components must be capable of operating independently, with no direct code dependencies between them.
-3. **API-Driven Communication**: Communication between components must occur exclusively through well-defined API contracts.
-4. **Interface Stability**: API interfaces must be stable, versioned, and backward compatible.
-5. **Component Testability**: Each component must be testable in isolation without requiring other components.
-6. **Independent Deployment**: Components must support independent deployment and scaling.
-7. **Technology Independence**: Each component should use technologies optimized for its specific role.
+1. **Modularity**
+   - Clear separation of concerns
+   - Independent components
+   - Pluggable architecture
+   - Service-based design
+
+2. **Scalability**
+   - Horizontal scaling support
+   - Load balancing ready
+   - Caching strategies
+   - Resource optimization
+
+3. **Security**
+   - Input validation
+   - Output sanitization
+   - Rate limiting
+   - CORS configuration
+   - Security headers
+
+4. **Performance**
+   - Response time optimization
+   - Resource caching
+   - Compression
+   - CDN support
+
+5. **Maintainability**
+   - Comprehensive logging
+   - Error tracking
+   - Performance monitoring
+   - Configuration management
 
 ## Overview
 
@@ -136,6 +158,24 @@ Markdown Forge is a web application for converting and managing Markdown files. 
    - Pagination controls
    - Filter components
 
+14. **Public Resource Management**
+    - Shared resource handling
+    - Static file optimization
+    - Cache control
+    - Security headers
+
+15. **Middleware System**
+    - Request logging
+    - Performance tracking
+    - Error handling
+    - Security headers
+
+16. **Configuration Management**
+    - Environment-based config
+    - Feature flags
+    - Performance settings
+    - Security settings
+
 ### Backend Requirements
 1. **File Operations**
    - File upload handling
@@ -181,6 +221,24 @@ Markdown Forge is a web application for converting and managing Markdown files. 
    - History management
    - Queue management
 
+14. **API Versioning**
+    - Version management
+    - Backward compatibility
+    - Deprecation handling
+    - Migration support
+
+15. **CORS Configuration**
+    - Origin validation
+    - Method restrictions
+    - Header management
+    - Credential handling
+
+16. **Rate Limiting**
+    - Request throttling
+    - IP-based limits
+    - User-based limits
+    - Custom rule support
+
 ## Technical Stack
 
 ### Frontend
@@ -192,6 +250,9 @@ Markdown Forge is a web application for converting and managing Markdown files. 
 - jQuery 3.7+
 - Chart.js 4.4+
 - Moment.js 2.30+
+- TailwindCSS
+- Alpine.js
+- HTMX
 
 ### Backend
 - FastAPI 0.109+
@@ -203,6 +264,7 @@ Markdown Forge is a web application for converting and managing Markdown files. 
 - aiofiles 23.2+
 - cachetools 5.3+
 - asyncio for concurrent processing
+- Uvicorn
 
 ### Development Tools
 - Git 2.40+
@@ -214,39 +276,42 @@ Markdown Forge is a web application for converting and managing Markdown files. 
 - ESLint 8.56+
 - Prettier 3.2+
 
+### DevOps
+- GitHub Actions
+
+### Testing
+- pytest
+- pytest-cov
+- pytest-asyncio
+- pytest-mock
+
+### Documentation
+- Markdown
+- Sphinx
+- OpenAPI/Swagger
+- JSDoc
+
 ## Directory Structure
 
 ```
 markdown-forge/
-├── app/                    # Frontend Flask application (autonomous)
+├── app/                    # Flask frontend application
 │   ├── static/            # Static files
-│   │   ├── css/           # CSS stylesheets
-│   │   ├── js/            # JavaScript files
-│   │   └── img/           # Images and icons
 │   ├── templates/         # Jinja2 templates
-│   ├── services/          # Frontend services
-│   ├── utils/             # Frontend utilities
-│   ├── routes/            # Route definitions
+│   ├── public/            # Shared resources
 │   ├── middleware/        # Request/response middleware
-│   ├── models/            # Frontend data models
-│   ├── controllers/       # Request handlers
-│   └── main.py            # Flask application
-├── backend/               # Backend FastAPI application (autonomous)
-│   ├── api/               # API endpoints
-│   ├── routers/           # Router definitions
-│   ├── models/            # Database models
-│   ├── services/          # Backend services
-│   ├── utils/             # Backend utilities
-│   ├── conversion_queue.py # Conversion queue implementation
-│   ├── config.py          # Configuration
-│   ├── database.py        # Database connection
-│   ├── auth.py            # Authentication
-│   └── main.py            # FastAPI application
-├── requirements/          # Project requirements
-├── docs/                  # Documentation
-│   └── api/               # API documentation
+│   ├── config/            # Configuration management
+│   └── utils/             # Utility functions
+├── backend/               # FastAPI backend application
+│   ├── routers/           # API endpoints
+│   ├── models/            # Data models
+│   ├── services/          # Business logic
+│   ├── middleware/        # API middleware
+│   └── utils/             # Utility functions
 ├── docker/                # Docker configuration
-└── requirements.txt       # Python dependencies
+├── docs/                  # Documentation
+├── requirements/          # Project requirements
+└── tests/                 # Test suites
 ```
 
 ## API Contract
@@ -336,99 +401,81 @@ CREATE TABLE templates (
 
 ## Security Requirements
 
-### Frontend Security
-- Input validation
-- XSS prevention
-- CSRF protection
-- Secure file upload
-- Error handling
-- Session management
-- Access control
-- Audit logging
+1. **Authentication**
+   - JWT-based auth
+   - Session management
+   - Password hashing
+   - 2FA support
 
-### Backend Security
-- API authentication
-- Rate limiting
-- Input validation
-- SQL injection prevention
-- File validation
-- Error handling
-- Access control
-- Audit logging
+2. **Authorization**
+   - Role-based access
+   - Permission management
+   - Resource protection
+   - API key management
 
-### Database Security
-- Connection encryption
-- Query parameterization
-- Access control
-- Backup encryption
-- Audit logging
-- Data validation
-- Error handling
-- Recovery procedures
+3. **Data Protection**
+   - Input validation
+   - Output sanitization
+   - SQL injection prevention
+   - XSS protection
 
-## Testing Requirements
+4. **API Security**
+   - Rate limiting
+   - CORS configuration
+   - API key validation
+   - Request validation
 
-### Frontend Testing
-- Unit tests
-- Component tests
-- Integration tests
-- UI tests
-- Accessibility tests
-- Performance tests
-- Security tests
-- End-to-end tests
+## Performance Requirements
 
-### Backend Testing
-- Unit tests
-- API tests
-- Integration tests
-- Service tests
-- Performance tests
-- Security tests
-- Load tests
-- Stress tests
+1. **Response Time**
+   - API < 100ms
+   - Page load < 2s
+   - Search < 500ms
+   - Export < 5s
 
-### Database Testing
-- Unit tests
-- Integration tests
-- Performance tests
-- Security tests
-- Backup tests
-- Recovery tests
-- Migration tests
-- Data validation tests
+2. **Resource Usage**
+   - Memory < 512MB
+   - CPU < 50%
+   - Disk < 1GB
+   - Network < 100MB/s
 
-## Deployment Strategy
+3. **Scalability**
+   - Horizontal scaling
+   - Load balancing
+   - Caching
+   - CDN support
 
-### Frontend Deployment
-- Docker containerization
-- Static file serving
-- Cache configuration
-- SSL/TLS setup
-- Load balancing
-- Monitoring setup
-- Backup strategy
-- Scaling configuration
+4. **Monitoring**
+   - Performance metrics
+   - Error tracking
+   - Resource usage
+   - User analytics
 
-### Backend Deployment
-- Docker containerization
-- API gateway
-- Cache configuration
-- SSL/TLS setup
-- Load balancing
-- Monitoring setup
-- Backup strategy
-- Scaling configuration
+## Documentation Requirements
 
-### Database Deployment
-- Docker containerization
-- Replication setup
-- Backup configuration
-- SSL/TLS setup
-- Load balancing
-- Monitoring setup
-- Recovery strategy
-- Scaling configuration
+1. **Code Documentation**
+   - JSDoc comments
+   - Type hints
+   - Function documentation
+   - Class documentation
+
+2. **API Documentation**
+   - OpenAPI/Swagger
+   - Endpoint descriptions
+   - Request/response examples
+   - Error documentation
+
+3. **User Documentation**
+   - Installation guide
+   - Usage guide
+   - API reference
+   - Troubleshooting guide
+
+4. **Development Documentation**
+   - Setup guide
+   - Contribution guide
+   - Testing guide
+   - Deployment guide
 
 ## Implemented Features
 

@@ -10,9 +10,13 @@ import json
 import traceback
 import threading
 import uuid
-from typing import Optional, Dict, Any, List, Union
+import inspect
+import functools
+import sys
+from typing import Optional, Dict, Any, List, Union, Callable
 from datetime import datetime
 from .config import config
+from pathlib import Path
 
 class ContextTracker:
     """Track request context for structured logging."""
@@ -62,176 +66,136 @@ class StructuredLogRecord(logging.LogRecord):
     def __init__(self, *args, **kwargs):
         """Initialize with standard LogRecord arguments."""
         super().__init__(*args, **kwargs)
-        # Add context to the log record
-        self.context = ContextTracker.get_context()
-        
-        # Add additional useful fields
-        self.timestamp = datetime.now().isoformat()
-        self.app_name = config.app_name
-        self.environment = config.environment
+        frame = inspect.currentframe().f_back.f_back
+        self.function_name = frame.f_code.co_name
+        self.module_name = frame.f_code.co_filename
+        self.line_number = frame.f_lineno
+        # Don't set any custom attributes on the LogRecord itself
 
 class StructuredJsonFormatter(logging.Formatter):
-    """JSON formatter for structured logging."""
+    """Formatter that outputs JSON strings after parsing the log record."""
     
     def format(self, record: StructuredLogRecord) -> str:
-        """Format record as JSON string.
-        
-        Args:
-            record: Log record to format
-            
-        Returns:
-            JSON formatted log string
-        """
+        """Format the log record as a JSON string."""
         log_data = {
-            "timestamp": record.timestamp,
-            "level": record.levelname,
-            "logger": record.name,
-            "message": record.getMessage(),
-            "module": record.module,
-            "function": record.funcName,
-            "line": record.lineno,
-            "app_name": record.app_name,
-            "environment": record.environment,
+            'timestamp': self.formatTime(record),
+            'level': record.levelname,
+            'message': record.getMessage(),
+            'module': record.module_name,
+            'function': record.function_name,
+            'line': record.line_number
         }
         
-        # Add context data directly to the log object for flatter structure
-        for key, value in record.context.items():
-            log_data[key] = value
+        # Add the custom data if available
+        if hasattr(record, 'data'):
+            log_data.update(record.data)
         
-        # Add exception info if present
         if record.exc_info:
-            log_data["exception"] = {
-                "type": record.exc_info[0].__name__,
-                "message": str(record.exc_info[1]),
-                "traceback": traceback.format_exception(*record.exc_info)
+            log_data['exception'] = {
+                'type': record.exc_info[0].__name__,
+                'message': str(record.exc_info[1]),
+                'traceback': self.formatException(record.exc_info)
             }
-        
-        # Add extra fields if present
-        if hasattr(record, "extra") and record.extra:
-            log_data["extra"] = record.extra
         
         return json.dumps(log_data)
 
 class AppLogger:
     """Application logger class with context tracking and performance metrics."""
     
-    def __init__(self, name: str = "app"):
+    def __init__(self, name: str, log_file: Optional[str] = None, level: str = 'INFO'):
         """Initialize logger.
         
         Args:
             name: Logger name
+            log_file: Path to log file
+            level: Logging level (DEBUG, INFO, WARNING, ERROR, CRITICAL)
         """
-        # Use our custom LogRecord factory
+        self.logger = logging.getLogger(name)
+        self.logger.setLevel(getattr(logging, level.upper()))
+        
+        # Set custom record factory
         logging.setLogRecordFactory(StructuredLogRecord)
         
-        self.logger = logging.getLogger(name)
-        self.logger.setLevel(config.logging.level)
-        
-        # Remove existing handlers to avoid duplicates when reloading
-        if self.logger.hasHandlers():
-            self.logger.handlers.clear()
-        
-        # Create formatters
-        json_formatter = StructuredJsonFormatter()
-        console_formatter = logging.Formatter(
-            "%(asctime)s - %(levelname)s - [%(name)s] %(message)s"
-        )
-        
-        # Create file handler
-        log_dir = os.path.dirname(config.logging.file)
-        os.makedirs(log_dir, exist_ok=True)
-        
-        file_handler = logging.handlers.RotatingFileHandler(
-            config.logging.file,
-            maxBytes=config.logging.max_size,
-            backupCount=config.logging.backup_count
-        )
-        file_handler.setFormatter(json_formatter)
-        file_handler.setLevel(config.logging.level)
-        
-        # Create console handler
-        console_handler = logging.StreamHandler()
-        console_handler.setFormatter(console_formatter)
-        console_handler.setLevel(config.logging.level)
-        
-        # Add handlers
-        self.logger.addHandler(file_handler)
+        # Console handler with structured formatting
+        console_handler = logging.StreamHandler(sys.stdout)
+        console_handler.setFormatter(StructuredJsonFormatter())
         self.logger.addHandler(console_handler)
+        
+        # File handler if log_file specified
+        if log_file:
+            Path(log_file).parent.mkdir(parents=True, exist_ok=True)
+            file_handler = logging.FileHandler(log_file)
+            file_handler.setFormatter(StructuredJsonFormatter())
+            self.logger.addHandler(file_handler)
         
         # Performance metrics tracking
         self._timers = {}
+        
+        # Function call tracking
+        self._call_stack = []
     
-    def _log(self, level: int, message: str, *args, **kwargs) -> None:
-        """Log a message with the specified level.
+    def debug(self, message: str, **kwargs) -> None:
+        """Log a debug message.
         
         Args:
-            level: Log level
-            message: Log message
-            *args: Additional positional arguments
-            **kwargs: Additional keyword arguments
+            message: The message to log
+            **kwargs: Additional context to include in the log
         """
-        extra = kwargs.pop("extra", {})
-        self.logger.log(level, message, *args, extra={"extra": extra}, **kwargs)
+        self.logger.debug(message, extra=kwargs)
     
-    def debug(self, message: str, *args, **kwargs) -> None:
-        """Log debug message.
+    def info(self, message: str, **kwargs) -> None:
+        """Log an info message.
         
         Args:
-            message: Log message
-            *args: Additional positional arguments
-            **kwargs: Additional keyword arguments
+            message: The message to log
+            **kwargs: Additional context to include in the log
         """
-        self._log(logging.DEBUG, message, *args, **kwargs)
+        self.logger.info(message, extra=kwargs)
     
-    def info(self, message: str, *args, **kwargs) -> None:
-        """Log info message.
+    def warning(self, message: str, **kwargs) -> None:
+        """Log a warning message.
         
         Args:
-            message: Log message
-            *args: Additional positional arguments
-            **kwargs: Additional keyword arguments
+            message: The message to log
+            **kwargs: Additional context to include in the log
         """
-        self._log(logging.INFO, message, *args, **kwargs)
+        self.logger.warning(message, extra=kwargs)
     
-    def warning(self, message: str, *args, **kwargs) -> None:
-        """Log warning message.
+    def error(self, message: str, **kwargs) -> None:
+        """Log an error message.
         
         Args:
-            message: Log message
-            *args: Additional positional arguments
-            **kwargs: Additional keyword arguments
+            message: The message to log
+            **kwargs: Additional context to include in the log
         """
-        self._log(logging.WARNING, message, *args, **kwargs)
+        self.logger.error(message, extra=kwargs)
     
-    def error(self, message: str, *args, **kwargs) -> None:
-        """Log error message.
+    def critical(self, message: str, **kwargs) -> None:
+        """Log a critical message.
         
         Args:
-            message: Log message
-            *args: Additional positional arguments
-            **kwargs: Additional keyword arguments
+            message: The message to log
+            **kwargs: Additional context to include in the log
         """
-        self._log(logging.ERROR, message, *args, **kwargs)
+        self.logger.critical(message, extra=kwargs)
     
-    def critical(self, message: str, *args, **kwargs) -> None:
-        """Log critical message.
+    def exception(self, message: str, **kwargs) -> None:
+        """Log an exception with traceback.
         
         Args:
-            message: Log message
-            *args: Additional positional arguments
-            **kwargs: Additional keyword arguments
+            message: The message to log
+            **kwargs: Additional context to include in the log
         """
-        self._log(logging.CRITICAL, message, *args, **kwargs)
-    
-    def exception(self, message: str, *args, **kwargs) -> None:
-        """Log exception message.
+        # Get the stack trace
+        stack_trace = traceback.format_stack()
         
-        Args:
-            message: Log message
-            *args: Additional positional arguments
-            **kwargs: Additional keyword arguments
-        """
-        self._log(logging.ERROR, message, exc_info=True, *args, **kwargs)
+        # Add stack trace to kwargs
+        data = kwargs.get('data', {})
+        data['stack_trace'] = stack_trace
+        kwargs['data'] = data
+        
+        # Log the error with the current exception info
+        self.logger.error(message, exc_info=True, extra=kwargs)
     
     def set_context(self, **kwargs) -> None:
         """Set context values for the current request.
@@ -243,7 +207,6 @@ class AppLogger:
     
     def add_context(self, **kwargs) -> None:
         """Add additional context values for the current request.
-        Alias for set_context for better semantic clarity.
         
         Args:
             **kwargs: Key-value pairs to add to the context
@@ -258,99 +221,130 @@ class AppLogger:
         """Start a performance timer.
         
         Args:
-            name: Timer name
+            name: Name of the timer
         """
         self._timers[name] = time.time()
-        self.debug(f"Timer '{name}' started")
     
     def stop_timer(self, name: str) -> float:
-        """Stop a performance timer and log the elapsed time.
+        """Stop a performance timer and return the elapsed time.
         
         Args:
-            name: Timer name
+            name: Name of the timer
             
         Returns:
-            Elapsed time in milliseconds
-            
-        Raises:
-            KeyError: If the timer was not started
+            Elapsed time in seconds
         """
         if name not in self._timers:
-            self.warning(f"Timer '{name}' was not started")
-            return 0
+            return 0.0
         
-        elapsed = (time.time() - self._timers.pop(name)) * 1000  # Convert to ms
-        self.debug(
-            f"Timer '{name}' stopped", 
-            extra={
-                "performance": {
-                    "timer_name": name,
-                    "elapsed_ms": elapsed
-                }
-            }
-        )
+        elapsed = time.time() - self._timers[name]
+        del self._timers[name]
         return elapsed
     
-    def log_metric(self, name: str, value: Union[int, float], unit: str = "") -> None:
-        """Log a performance or business metric.
+    def log_metric(self, name: str, value: float, unit: str = "ms") -> None:
+        """Log a performance metric.
         
         Args:
-            name: Metric name
-            value: Metric value
-            unit: Unit of measurement (optional)
+            name: Name of the metric
+            value: Value of the metric
+            unit: Unit of the metric
         """
-        self.info(
-            f"Metric: {name}={value}{unit}",
+        self.logger.info(
+            f"Metric: {name} = {value} {unit}",
+            extra={"metric": {"name": name, "value": value, "unit": unit}}
+        )
+    
+    def log_function_entry(self, func_name: str, params: Dict[str, Any], request_id: Optional[str] = None) -> None:
+        """Log function entry with parameters"""
+        self.logger.debug(
+            f"Entering function: {func_name}",
             extra={
-                "metric": {
-                    "name": name,
-                    "value": value,
-                    "unit": unit
+                'data': {
+                    'event_type': 'entry',
+                    'params': params,
+                    'request_id': request_id
                 }
             }
         )
     
-    def log_request(self, method: str, path: str, status_code: int, elapsed_ms: float) -> None:
-        """Log HTTP request details.
-        
-        Args:
-            method: HTTP method
-            path: Request path
-            status_code: HTTP status code
-            elapsed_ms: Request processing time in milliseconds
-        """
-        self.info(
-            f"{method} {path} {status_code} {elapsed_ms:.2f}ms",
+    def log_function_exit(self, func_name: str, result: Any, execution_time: float, request_id: Optional[str] = None) -> None:
+        """Log function exit with return value and performance metrics"""
+        self.logger.debug(
+            f"Exiting function: {func_name}",
             extra={
-                "http_request": {
-                    "method": method,
-                    "path": path,
-                    "status_code": status_code,
-                    "elapsed_ms": elapsed_ms
+                'data': {
+                    'event_type': 'exit',
+                    'return_value': str(result),
+                    'performance': {
+                        'execution_time_ms': execution_time * 1000
+                    },
+                    'request_id': request_id
                 }
             }
         )
     
-    def log_batch_operation(self, operation: str, total: int, success: int, failed: int) -> None:
-        """Log batch operation details.
-        
-        Args:
-            operation: Operation name
-            total: Total number of items
-            success: Number of successful items
-            failed: Number of failed items
-        """
-        self.info(
-            f"Batch {operation}: {success}/{total} successful, {failed} failed",
+    def log_function_error(self, func_name: str, error: Exception, request_id: Optional[str] = None) -> None:
+        """Log function errors with full stack trace"""
+        self.logger.error(
+            f"Error in function: {func_name}",
+            exc_info=error,
             extra={
-                "batch_operation": {
-                    "operation": operation,
-                    "total": total,
-                    "success": success,
-                    "failed": failed
+                'data': {
+                    'event_type': 'error',
+                    'request_id': request_id
                 }
             }
         )
+
+def log_function(logger: AppLogger) -> Callable:
+    """Decorator to automatically log function entry, exit, and exceptions"""
+    def decorator(func: Callable) -> Callable:
+        @functools.wraps(func)
+        def wrapper(*args, **kwargs) -> Any:
+            import time
+            import uuid
+            
+            func_name = func.__name__
+            # Generate request ID for tracking
+            request_id = str(uuid.uuid4())
+            
+            # Prepare parameters for logging
+            params = {
+                'args': [str(arg) for arg in args],
+                'kwargs': {k: str(v) for k, v in kwargs.items()}
+            }
+            
+            try:
+                # Log function entry
+                logger.log_function_entry(func_name, params, request_id)
+                
+                # Execute function and measure time
+                start_time = time.time()
+                result = func(*args, **kwargs)
+                execution_time = time.time() - start_time
+                
+                # Log successful exit
+                logger.log_function_exit(func_name, result, execution_time, request_id)
+                
+                return result
+            except Exception as e:
+                # Log error with full stack trace
+                logger.log_function_error(func_name, e, request_id)
+                raise
+                
+        return wrapper
+    return decorator
+
+def get_logger(name: str = "app") -> AppLogger:
+    """Get a logger instance.
+    
+    Args:
+        name: Logger name
+        
+    Returns:
+        Logger instance
+    """
+    return AppLogger(name)
 
 def configure_logger(log_level: str = "INFO", log_file: str = "app.log") -> None:
     """Configure the global logger with custom settings.
@@ -369,18 +363,4 @@ def configure_logger(log_level: str = "INFO", log_file: str = "app.log") -> None
     
     # Re-initialize the default logger
     global logger
-    logger = AppLogger()
-
-def get_logger(name: str) -> AppLogger:
-    """Get a logger instance for the specified name.
-    
-    Args:
-        name: Logger name
-        
-    Returns:
-        AppLogger instance
-    """
-    return AppLogger(name)
-
-# Create default logger instance
-logger = AppLogger() 
+    logger = AppLogger(name="app", log_file=log_file, level=log_level) 

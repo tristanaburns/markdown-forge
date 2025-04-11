@@ -59,6 +59,7 @@ app/
 ├── models/            # Frontend data models
 ├── controllers/       # Request handlers
 ├── config/            # Configuration files
+├── public/            # Public assets
 ├── logs/              # Log files
 └── main.py            # Flask application entry point
 ```

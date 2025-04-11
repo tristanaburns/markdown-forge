@@ -83,8 +83,12 @@ markdown-forge/
 │   ├── models/             # Frontend data models
 │   ├── views/              # Standalone views
 │   ├── controllers/        # Request handlers
+│   ├── middleware/         # Request/response middleware
+│   ├── config/             # Configuration files
+│   ├── public/             # Public assets
 │   ├── logs/               # Log files
 │   ├── tests/              # Frontend tests
+│   ├── data/               # Data storage
 │   └── main.py             # Flask application entry point
 ├── backend/                # Backend FastAPI application
 │   ├── api/                # API endpoints
@@ -108,17 +112,26 @@ markdown-forge/
 │   └── main.py             # FastAPI application entry point
 ├── requirements/           # Project requirements and documentation
 │   ├── project-plan.md     # Project planning
-│   └── project-requirements.md # Project requirements
+│   ├── project-requirements.md # Project requirements
+│   └── ad-hoc-prompts.md   # Development instructions
 ├── docs/                   # Documentation
 │   └── api/                # API documentation
 ├── docker/                 # Docker configuration
-│   └── Dockerfile          # Multi-stage Dockerfile
+│   ├── Dockerfile          # Multi-stage Dockerfile
+│   └── README.md           # Docker setup instructions
 ├── .vscode/                # VS Code configuration
 │   └── launch.json         # Launch configurations
 ├── docker-compose.yml      # Docker Compose configuration
 ├── .env.development        # Development environment variables
 ├── run.py                  # Run script for development
 ├── requirements.txt        # Python dependencies
+├── .gitignore              # Git ignore file
+├── .dockerignore           # Docker ignore file
+├── Dockerfile              # Root Dockerfile
+├── tsconfig.json           # TypeScript configuration
+├── .eslintrc.json          # ESLint configuration
+├── .prettierrc             # Prettier configuration
+├── package.json            # Node.js dependencies
 └── README.md               # This file
 ```
 

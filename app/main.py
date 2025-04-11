@@ -14,9 +14,14 @@ from pathlib import Path
 from datetime import datetime, timedelta
 import math
 import random
+import markdown
 
 # Import error handler
 from utils.error_handler import register_error_handlers, ValidationError, NotFoundError, ConversionError
+
+# Import configuration and route helpers
+from utils.config import Config
+from utils.route_helpers import track_performance, api_request
 
 # Configure logger
 import logging
@@ -50,46 +55,103 @@ def allowed_file(filename):
     return '.' in filename and filename.rsplit('.', 1)[1].lower() in app.config['ALLOWED_EXTENSIONS']
 
 @app.route('/')
-@track_performance(page_name="home")
+@track_performance(page_name="index")
 def index():
     """
-    Main landing page route
+    Display the home page with a list of markdown files
     """
     try:
         # Add request context to logger
-        logger.set_context(page="index", user_id=session.get('user_id', 'anonymous'))
+        try:
+            logger.set_context(page="index", user_id=session.get('user_id', 'anonymous'))
+        except AttributeError:
+            logger.info("Logger context setting not available")
         
         # Start performance timer
-        logger.start_timer("render_index")
+        try:
+            logger.start_timer("index_process")
+        except AttributeError:
+            pass
         
-        # Log page access
         logger.info("Accessing index page")
         
-        # Get the files from the API
-        response = requests.get(f"{config.api.base_url}/files")
+        try:
+            # Start timer for API call
+            try:
+                logger.start_timer("api_get_files")
+            except AttributeError:
+                pass
+            
+            # Get list of files from API
+            response = requests.get(f"{config.api.base_url}/files")
+            
+            # Log performance for API call
+            try:
+                api_time = logger.stop_timer("api_get_files")
+                logger.log_metric("api_get_files_time", api_time, "ms")
+            except AttributeError:
+                pass
+            
+            if response.status_code == 200:
+                files = response.json()
+                logger.info(f"Successfully retrieved {len(files)} files")
+                
+                # Stop timer and log performance
+                try:
+                    elapsed = logger.stop_timer("index_process")
+                    logger.log_metric("index_total_time", elapsed, "ms")
+                except AttributeError:
+                    pass
+                
+                try:
+                    logger.clear_context()
+                except AttributeError:
+                    pass
+                
+                return render_template('index.html', files=files)
+            else:
+                logger.error(f"Failed to retrieve files, status: {response.status_code}")
+                
+                # Stop timer and log performance
+                try:
+                    elapsed = logger.stop_timer("index_process")
+                    logger.log_metric("index_total_time", elapsed, "ms")
+                except AttributeError:
+                    pass
+                
+                try:
+                    logger.clear_context()
+                except AttributeError:
+                    pass
+                
+                return render_template('error.html', message="Failed to retrieve files from the API"), response.status_code
         
-        if response.status_code == 200:
-            files = response.json()
-            logger.info(f"Retrieved {len(files)} files from API")
-        else:
-            files = []
-            logger.error(f"Failed to retrieve files from API, status code: {response.status_code}")
-        
-        # Render the template
-        result = render_template('index.html', files=files)
-        
-        # Stop timer and log performance
-        elapsed = logger.stop_timer("render_index")
-        logger.log_metric("page_render_time", elapsed, "ms")
-        
-        # Clear context before returning
-        logger.clear_context()
-        
-        return result
+        except Exception as e:
+            logger.exception(f"Error fetching files: {str(e)}")
+            
+            # Stop timer and log performance
+            try:
+                elapsed = logger.stop_timer("index_process")
+                logger.log_metric("index_total_time", elapsed, "ms")
+            except AttributeError:
+                pass
+            
+            try:
+                logger.clear_context()
+            except AttributeError:
+                pass
+            
+            return render_template('error.html', message="Error fetching files"), 500
+    
     except Exception as e:
-        logger.exception("Error rendering index page")
-        logger.clear_context()
-        return render_template('error.html', message="Failed to load files"), 500
+        logger.exception(f"Error in index process: {str(e)}")
+        
+        try:
+            logger.clear_context()
+        except AttributeError:
+            pass
+        
+        return render_template('error.html', message="Error processing index page"), 500
 
 @app.route('/upload')
 @track_performance(page_name="upload")
@@ -99,11 +161,17 @@ def upload():
     """
     try:
         # Add request context to logger
-        logger.set_context(page="upload", user_id=session.get('user_id', 'anonymous'), 
-                         method=request.method)
+        try:
+            logger.set_context(page="upload", user_id=session.get('user_id', 'anonymous'), 
+                            method=request.method)
+        except AttributeError:
+            logger.info("Logger context setting not available")
         
         # Start performance timer
-        logger.start_timer("upload_process")
+        try:
+            logger.start_timer("upload_process")
+        except AttributeError:
+            pass
         
         # Log page access
         logger.info(f"Accessing upload page via {request.method}")
@@ -137,19 +205,33 @@ def upload():
                     logger.info(f"File uploaded successfully with ID: {file_id}")
                     
                     # Stop timer and log performance
-                    elapsed = logger.stop_timer("upload_process")
-                    logger.log_metric("upload_time", elapsed, "ms")
-                    logger.log_metric("file_size", file.tell(), "bytes")
-                    logger.clear_context()
+                    try:
+                        elapsed = logger.stop_timer("upload_process")
+                        logger.log_metric("upload_time", elapsed, "ms")
+                        logger.log_metric("file_size", file.tell(), "bytes")
+                    except AttributeError:
+                        pass
+                    
+                    try:
+                        logger.clear_context()
+                    except AttributeError:
+                        pass
                     
                     return redirect(url_for('preview', file_id=file_id))
                 else:
                     logger.error(f"API upload failed with status: {response.status_code}, {response.text}")
                     
                     # Stop timer and log performance
-                    elapsed = logger.stop_timer("upload_process")
-                    logger.log_metric("failed_upload_time", elapsed, "ms")
-                    logger.clear_context()
+                    try:
+                        elapsed = logger.stop_timer("upload_process")
+                        logger.log_metric("failed_upload_time", elapsed, "ms")
+                    except AttributeError:
+                        pass
+                    
+                    try:
+                        logger.clear_context()
+                    except AttributeError:
+                        pass
                     
                     flash('Error uploading file')
                     return redirect(request.url)
@@ -162,14 +244,24 @@ def upload():
         result = render_template('upload.html')
         
         # Stop timer and log performance
-        elapsed = logger.stop_timer("upload_process")
-        logger.log_metric("page_render_time", elapsed, "ms")
-        logger.clear_context()
+        try:
+            elapsed = logger.stop_timer("upload_process")
+            logger.log_metric("page_render_time", elapsed, "ms")
+        except AttributeError:
+            pass
+        
+        try:
+            logger.clear_context()
+        except AttributeError:
+            pass
         
         return result
     except Exception as e:
         logger.exception("Error in upload process")
-        logger.clear_context()
+        try:
+            logger.clear_context()
+        except AttributeError:
+            pass
         return render_template('error.html', message="Error processing upload"), 500
 
 @app.route('/files')
@@ -181,28 +273,79 @@ def files():
 @track_performance(page_name="preview")
 def preview(file_id):
     """
-    File preview page route
+    Preview page for a specific file
     """
-    # Add file_id to context
-    logger.add_context(file_id=file_id)
+    try:
+        # Add request context to logger
+        try:
+            logger.set_context(page="preview", file_id=file_id, user_id=session.get('user_id', 'anonymous'))
+        except AttributeError:
+            logger.info("Logger context setting not available")
+        
+        # Start performance timer
+        try:
+            logger.start_timer("preview_process")
+        except AttributeError:
+            pass
+        
+        logger.info(f"Accessing preview page for file: {file_id}")
+        
+        # Fetch file details from the API
+        response = requests.get(f"{config.api.base_url}/files/{file_id}")
+        
+        if response.status_code == 200:
+            file_data = response.json()
+            
+            # Get the file content for preview
+            content_response = requests.get(f"{config.api.base_url}/files/{file_id}/content")
+            
+            if content_response.status_code == 200:
+                file_content = content_response.json().get('content', '')
+                
+                # Stop timer and log performance
+                try:
+                    elapsed = logger.stop_timer("preview_process")
+                    logger.log_metric("preview_load_time", elapsed, "ms")
+                except AttributeError:
+                    pass
+                
+                try:
+                    logger.clear_context()
+                except AttributeError:
+                    pass
+                
+                return render_template('preview.html', 
+                                    file=file_data, 
+                                    content=file_content,
+                                    file_id=file_id)
+            else:
+                logger.error(f"Failed to get file content, status: {content_response.status_code}")
+                
+                try:
+                    logger.clear_context()
+                except AttributeError:
+                    pass
+                
+                return render_template('error.html', message="Failed to load file content"), 404
+        else:
+            logger.error(f"Failed to get file data, status: {response.status_code}")
+            
+            try:
+                logger.clear_context()
+            except AttributeError:
+                pass
+            
+            return render_template('error.html', message="File not found"), 404
     
-    # Get file data from API
-    response = api_request(
-        url=f"{config.api.base_url}/files/{file_id}",
-        method="GET"
-    )
-    
-    if response and response.status_code == 200:
-        file_data = response.json()
-        logger.debug("File retrieved successfully for preview", extra={
-            "file_size": len(file_data.get('content', '')),
-            "file_name": file_data.get('filename', '')
-        })
-        return render_template('preview.html', file_id=file_id)
-    else:
-        status_code = response.status_code if response else "N/A"
-        logger.warning(f"Failed to retrieve file for preview", extra={"status_code": status_code})
-        return render_template('error.html', message="File not found"), 404
+    except Exception as e:
+        logger.exception(f"Error in preview process: {str(e)}")
+        
+        try:
+            logger.clear_context()
+        except AttributeError:
+            pass
+        
+        return render_template('error.html', message="Error processing preview"), 500
 
 @app.route('/conversion-history')
 @track_performance(page_name="conversion_history")
@@ -296,90 +439,455 @@ def get_file(file_id):
         # Use the error handler
         raise ConversionError(f"Error retrieving file: {str(e)}")
 
-@app.route('/api/files/<file_id>', methods=['DELETE'])
+@app.route('/delete/<file_id>', methods=['GET', 'POST'])
+@track_performance(page_name="delete_file")
 def delete_file(file_id):
-    """Delete a file by ID."""
+    """
+    Delete a markdown file by ID
+    """
     try:
-        # Delete all formats of the file
-        deleted = False
-        for ext in ['.html', '.pdf', '.docx', '.png']:
-            file_path = os.path.join(app.config['CONVERTED_FOLDER'], f"{file_id}{ext}")
-            if os.path.exists(file_path):
-                os.remove(file_path)
-                deleted = True
+        # Add request context to logger
+        try:
+            logger.set_context(page="delete_file", file_id=file_id, user_id=session.get('user_id', 'anonymous'))
+        except AttributeError:
+            logger.info("Logger context setting not available")
         
-        if not deleted:
-            raise NotFoundError(f"File with ID {file_id} not found")
+        # Start performance timer
+        try:
+            logger.start_timer("delete_file_process")
+        except AttributeError:
+            pass
+        
+        logger.info(f"Processing delete request for file with ID: {file_id}")
+        
+        if request.method == 'GET':
+            logger.info(f"Displaying delete confirmation for file {file_id}")
             
-        return jsonify({'message': 'File deleted successfully'})
-    except NotFoundError:
-        # Re-raise NotFoundError to be handled by the error handler
-        raise
+            try:
+                # Start timer for API call
+                try:
+                    logger.start_timer("api_get_file")
+                except AttributeError:
+                    pass
+                
+                # Get file metadata to confirm deletion
+                response = requests.get(f"{config.api.base_url}/files/{file_id}")
+                
+                # Log performance for API call
+                try:
+                    api_time = logger.stop_timer("api_get_file")
+                    logger.log_metric("api_get_file_time", api_time, "ms")
+                except AttributeError:
+                    pass
+                
+                if response.status_code != 200:
+                    logger.error(f"Failed to retrieve file {file_id} for deletion confirmation, API returned: {response.status_code}")
+                    
+                    # Stop timer and log performance
+                    try:
+                        elapsed = logger.stop_timer("delete_file_process")
+                        logger.log_metric("delete_file_total_time", elapsed, "ms")
+                    except AttributeError:
+                        pass
+                    
+                    try:
+                        logger.clear_context()
+                    except AttributeError:
+                        pass
+                    
+                    flash(f"File not found: {response.reason}", "error")
+                    return redirect(url_for('dashboard'))
+                
+                file_data = response.json()
+                logger.info(f"Retrieved file {file_id} for deletion confirmation")
+                
+                # Start timer for rendering template
+                try:
+                    logger.start_timer("render_delete_confirmation")
+                except AttributeError:
+                    pass
+                
+                # Render the delete confirmation template
+                rendered = render_template('delete.html', file=file_data)
+                
+                # Log performance for rendering
+                try:
+                    render_time = logger.stop_timer("render_delete_confirmation")
+                    logger.log_metric("render_delete_confirmation_time", render_time, "ms")
+                except AttributeError:
+                    pass
+                
+                # Stop main timer and log performance
+                try:
+                    elapsed = logger.stop_timer("delete_file_process")
+                    logger.log_metric("delete_file_total_time", elapsed, "ms")
+                except AttributeError:
+                    pass
+                
+                try:
+                    logger.clear_context()
+                except AttributeError:
+                    pass
+                
+                return rendered
+            
+            except requests.RequestException as e:
+                logger.exception(f"Network error retrieving file {file_id} for deletion: {str(e)}")
+                
+                # Stop timer and log performance
+                try:
+                    elapsed = logger.stop_timer("delete_file_process")
+                    logger.log_metric("delete_file_total_time", elapsed, "ms")
+                except AttributeError:
+                    pass
+                
+                try:
+                    logger.clear_context()
+                except AttributeError:
+                    pass
+                
+                flash(f"Network error: {str(e)}", "error")
+                return redirect(url_for('dashboard'))
+                
+            except Exception as e:
+                logger.exception(f"Error retrieving file {file_id} for deletion: {str(e)}")
+                
+                # Stop timer and log performance
+                try:
+                    elapsed = logger.stop_timer("delete_file_process")
+                    logger.log_metric("delete_file_total_time", elapsed, "ms")
+                except AttributeError:
+                    pass
+                
+                try:
+                    logger.clear_context()
+                except AttributeError:
+                    pass
+                
+                flash(f"Error: {str(e)}", "error")
+                return redirect(url_for('dashboard'))
+        
+        elif request.method == 'POST':
+            logger.info(f"Executing deletion of file {file_id}")
+            
+            try:
+                # Start timer for API call
+                try:
+                    logger.start_timer("api_delete_file")
+                except AttributeError:
+                    pass
+                
+                # Delete the file
+                response = requests.delete(f"{config.api.base_url}/files/{file_id}")
+                
+                # Log performance for API call
+                try:
+                    api_time = logger.stop_timer("api_delete_file")
+                    logger.log_metric("api_delete_file_time", api_time, "ms")
+                except AttributeError:
+                    pass
+                
+                # Stop main timer and log performance
+                try:
+                    elapsed = logger.stop_timer("delete_file_process")
+                    logger.log_metric("delete_file_total_time", elapsed, "ms")
+                except AttributeError:
+                    pass
+                
+                try:
+                    logger.clear_context()
+                except AttributeError:
+                    pass
+                
+                if response.status_code == 200:
+                    logger.info(f"Successfully deleted file {file_id}")
+                    flash("File deleted successfully", "success")
+                else:
+                    logger.error(f"Failed to delete file {file_id}, API returned: {response.status_code}")
+                    flash(f"Failed to delete file: {response.reason}", "error")
+                
+                return redirect(url_for('dashboard'))
+            
+            except requests.RequestException as e:
+                logger.exception(f"Network error deleting file {file_id}: {str(e)}")
+                
+                # Stop timer and log performance
+                try:
+                    elapsed = logger.stop_timer("delete_file_process")
+                    logger.log_metric("delete_file_total_time", elapsed, "ms")
+                except AttributeError:
+                    pass
+                
+                try:
+                    logger.clear_context()
+                except AttributeError:
+                    pass
+                
+                flash(f"Network error: {str(e)}", "error")
+                return redirect(url_for('dashboard'))
+                
+            except Exception as e:
+                logger.exception(f"Error deleting file {file_id}: {str(e)}")
+                
+                # Stop timer and log performance
+                try:
+                    elapsed = logger.stop_timer("delete_file_process")
+                    logger.log_metric("delete_file_total_time", elapsed, "ms")
+                except AttributeError:
+                    pass
+                
+                try:
+                    logger.clear_context()
+                except AttributeError:
+                    pass
+                
+                flash(f"Error: {str(e)}", "error")
+                return redirect(url_for('dashboard'))
+    
     except Exception as e:
-        # Use the error handler
-        raise ConversionError(f"Error deleting file: {str(e)}")
+        logger.exception(f"Unexpected error in delete file process: {str(e)}")
+        
+        try:
+            elapsed = logger.stop_timer("delete_file_process")
+            logger.log_metric("delete_file_total_time", elapsed, "ms")
+        except AttributeError:
+            pass
+        
+        try:
+            logger.clear_context()
+        except AttributeError:
+            pass
+        
+        flash("An unexpected error occurred", "error")
+        return redirect(url_for('dashboard'))
 
 @app.route('/api/convert', methods=['POST'])
+@track_performance(page_name="api_convert")
 def convert_file():
     """Convert uploaded Markdown file with support for multiple output formats."""
     try:
-        if 'file' not in request.files:
-            raise ValidationError('No file provided')
+        # Add request context to logger
+        try:
+            logger.set_context(
+                page="api_convert", 
+                user_id=session.get('user_id', 'anonymous'),
+                file_name=request.files.get('file').filename if 'file' in request.files else None
+            )
+        except AttributeError:
+            logger.info("Logger context setting not available")
         
-        file = request.files['file']
-        if file.filename == '':
-            raise ValidationError('No file selected')
+        # Start performance timer
+        try:
+            logger.start_timer("convert_file_process")
+        except AttributeError:
+            pass
         
-        if not allowed_file(file.filename):
-            raise ValidationError('Invalid file type. Only Markdown files (.md, .markdown, .mdown) are allowed')
+        logger.info("Processing file conversion request")
         
-        # Get requested formats (default to HTML if none specified)
-        formats = request.form.getlist('formats')
-        if not formats:
-            formats = ['html']
-        
-        # Validate formats
-        valid_formats = ['html', 'pdf', 'docx', 'png']
-        for fmt in formats:
-            if fmt not in valid_formats:
-                raise ValidationError(f"Invalid format: {fmt}. Supported formats are: {', '.join(valid_formats)}")
-        
-        # Check if Pandoc should be used
-        use_pandoc = request.form.get('usePandoc', 'false').lower() == 'true'
-        
-        # Generate a unique file ID
-        file_id = str(uuid.uuid4())
-        
-        # Save the uploaded file
-        filename = secure_filename(file.filename)
-        file_path = os.path.join(app.config['UPLOAD_FOLDER'], f"{file_id}_{filename}")
-        file.save(file_path)
-        
-        # TODO: Implement actual file conversion logic for each format
-        # This is a placeholder for the conversion logic
-        converted_files = []
-        for fmt in formats:
-            output_path = os.path.join(app.config['CONVERTED_FOLDER'], f"{file_id}.{fmt}")
-            with open(output_path, 'w') as f:
-                f.write(f"Placeholder for {fmt.upper()} conversion of {filename}")
-            converted_files.append({
-                'format': fmt,
-                'path': output_path,
-                'size': os.path.getsize(output_path)
-            })
-        
-        return jsonify({
-            'message': 'File converted successfully',
-            'file_id': file_id,
-            'original_name': filename,
-            'converted_files': converted_files
-        })
-    except ValidationError:
-        # Re-raise ValidationError to be handled by the error handler
-        raise
+        try:
+            # Validate input
+            if 'file' not in request.files:
+                logger.warning("No file provided in conversion request")
+                
+                try:
+                    logger.clear_context()
+                except AttributeError:
+                    pass
+                
+                raise ValidationError('No file provided')
+            
+            file = request.files['file']
+            if file.filename == '':
+                logger.warning("Empty file name in conversion request")
+                
+                try:
+                    logger.clear_context()
+                except AttributeError:
+                    pass
+                
+                raise ValidationError('No file selected')
+            
+            if not allowed_file(file.filename):
+                logger.warning(f"Invalid file type: {file.filename}")
+                
+                try:
+                    logger.clear_context()
+                except AttributeError:
+                    pass
+                
+                raise ValidationError('Invalid file type. Only Markdown files (.md, .markdown, .mdown) are allowed')
+            
+            # Get requested formats (default to HTML if none specified)
+            formats = request.form.getlist('formats')
+            if not formats:
+                formats = ['html']
+                logger.info("No formats specified, defaulting to HTML")
+            else:
+                logger.info(f"Requested formats: {', '.join(formats)}")
+            
+            # Validate formats
+            valid_formats = ['html', 'pdf', 'docx', 'png']
+            for fmt in formats:
+                if fmt not in valid_formats:
+                    logger.warning(f"Invalid format requested: {fmt}")
+                    
+                    try:
+                        logger.clear_context()
+                    except AttributeError:
+                        pass
+                    
+                    raise ValidationError(f"Invalid format: {fmt}. Supported formats are: {', '.join(valid_formats)}")
+            
+            # Check if Pandoc should be used
+            use_pandoc = request.form.get('usePandoc', 'false').lower() == 'true'
+            logger.info(f"Using Pandoc for conversion: {use_pandoc}")
+            
+            # Generate a unique file ID
+            file_id = str(uuid.uuid4())
+            logger.add_context(file_id=file_id)
+            
+            # Start timer for saving file
+            try:
+                logger.start_timer("file_save")
+            except AttributeError:
+                pass
+            
+            # Save the uploaded file
+            filename = secure_filename(file.filename)
+            file_path = os.path.join(app.config['UPLOAD_FOLDER'], f"{file_id}_{filename}")
+            file.save(file_path)
+            file_size = os.path.getsize(file_path)
+            
+            # Log performance for file save
+            try:
+                save_time = logger.stop_timer("file_save")
+                logger.log_metric("file_save_time", save_time, "ms")
+                logger.log_metric("file_size", file_size, "bytes")
+            except AttributeError:
+                pass
+            
+            logger.info(f"Saved file {filename} ({file_size} bytes) with ID: {file_id}")
+            
+            # Start timer for conversion
+            try:
+                logger.start_timer("file_conversion")
+            except AttributeError:
+                pass
+            
+            # Conversion logic for each format
+            converted_files = []
+            for fmt in formats:
+                # Start timer for individual format conversion
+                try:
+                    logger.start_timer(f"convert_to_{fmt}")
+                except AttributeError:
+                    pass
+                
+                # TODO: Implement actual file conversion logic for each format
+                # This is a placeholder for the conversion logic
+                output_path = os.path.join(app.config['CONVERTED_FOLDER'], f"{file_id}.{fmt}")
+                
+                with open(output_path, 'w') as f:
+                    f.write(f"Placeholder for {fmt.upper()} conversion of {filename}")
+                
+                converted_size = os.path.getsize(output_path)
+                
+                # Log performance for individual format conversion
+                try:
+                    fmt_time = logger.stop_timer(f"convert_to_{fmt}")
+                    logger.log_metric(f"convert_to_{fmt}_time", fmt_time, "ms")
+                    logger.log_metric(f"converted_{fmt}_size", converted_size, "bytes")
+                except AttributeError:
+                    pass
+                
+                logger.info(f"Converted file to {fmt} format: {output_path} ({converted_size} bytes)")
+                
+                converted_files.append({
+                    'format': fmt,
+                    'path': output_path,
+                    'size': converted_size
+                })
+            
+            # Log performance for overall conversion
+            try:
+                conversion_time = logger.stop_timer("file_conversion")
+                logger.log_metric("file_conversion_time", conversion_time, "ms")
+            except AttributeError:
+                pass
+            
+            # Prepare response
+            response_data = {
+                'message': 'File converted successfully',
+                'file_id': file_id,
+                'original_name': filename,
+                'converted_files': converted_files
+            }
+            
+            # Stop main timer and log performance
+            try:
+                elapsed = logger.stop_timer("convert_file_process")
+                logger.log_metric("convert_file_total_time", elapsed, "ms")
+            except AttributeError:
+                pass
+            
+            logger.info(f"Successfully converted file {filename} to {len(formats)} formats")
+            
+            try:
+                logger.clear_context()
+            except AttributeError:
+                pass
+            
+            return jsonify(response_data)
+            
+        except ValidationError as ve:
+            # Stop main timer and log performance
+            try:
+                elapsed = logger.stop_timer("convert_file_process")
+                logger.log_metric("convert_file_validation_error_time", elapsed, "ms")
+            except AttributeError:
+                pass
+            
+            try:
+                logger.clear_context()
+            except AttributeError:
+                pass
+            
+            # Re-raise ValidationError to be handled by the error handler
+            raise
+            
+        except Exception as e:
+            logger.exception(f"Error in file conversion process: {str(e)}")
+            
+            # Stop main timer and log performance
+            try:
+                elapsed = logger.stop_timer("convert_file_process")
+                logger.log_metric("convert_file_error_time", elapsed, "ms")
+            except AttributeError:
+                pass
+            
+            try:
+                logger.clear_context()
+            except AttributeError:
+                pass
+            
+            # Use the error handler
+            raise ConversionError(f"Error converting file: {str(e)}")
+    
     except Exception as e:
-        # Use the error handler
-        raise ConversionError(f"Error converting file: {str(e)}")
+        logger.exception(f"Unexpected error in convert file process: {str(e)}")
+        
+        try:
+            elapsed = logger.stop_timer("convert_file_process")
+            logger.log_metric("convert_file_total_time", elapsed, "ms")
+        except AttributeError:
+            pass
+        
+        try:
+            logger.clear_context()
+        except AttributeError:
+            pass
+        
+        raise ConversionError(f"Unexpected error in file conversion: {str(e)}")
 
 @app.route('/api/convert/batch', methods=['POST'])
 def convert_batch():
@@ -883,6 +1391,790 @@ def get_conversion_history():
                 'total_items': 0,
                 'total_pages': 0
             }
+        })
+
+@app.route('/edit/<file_id>', methods=['GET', 'POST'])
+@track_performance(page_name="edit_file")
+def edit_file(file_id):
+    """Edit a markdown file"""
+    try:
+        # Add request context to logger
+        try:
+            logger.set_context(page="edit_file", file_id=file_id, user_id=session.get('user_id', 'anonymous'))
+        except AttributeError:
+            logger.info("Logger context setting not available")
+        
+        # Start performance timer
+        try:
+            logger.start_timer("edit_file_process")
+        except AttributeError:
+            pass
+        
+        logger.info(f"Editing file with ID: {file_id}")
+        
+        if request.method == 'POST':
+            # For POST requests, update the file content
+            try:
+                # Get form data
+                title = request.form.get('title', '').strip()
+                content = request.form.get('content', '').strip()
+                
+                if not title:
+                    logger.warning("Empty title submitted in edit form")
+                    flash("Title cannot be empty", "error")
+                    
+                    # Start timer for API call
+                    try:
+                        logger.start_timer("api_get_file")
+                    except AttributeError:
+                        pass
+                    
+                    # Get file details from API
+                    file_response = requests.get(f"{config.api.base_url}/files/{file_id}")
+                    
+                    # Log performance for API call
+                    try:
+                        api_time = logger.stop_timer("api_get_file")
+                        logger.log_metric("api_get_file_time", api_time, "ms")
+                    except AttributeError:
+                        pass
+                    
+                    if file_response.status_code == 200:
+                        file_data = file_response.json()
+                        
+                        # Start timer for rendering template
+                        try:
+                            logger.start_timer("render_edit_form")
+                        except AttributeError:
+                            pass
+                        
+                        # Render the form again with existing data
+                        rendered = render_template(
+                            'edit_file.html',
+                            file=file_data
+                        )
+                        
+                        # Log performance for rendering
+                        try:
+                            render_time = logger.stop_timer("render_edit_form")
+                            logger.log_metric("render_edit_form_time", render_time, "ms")
+                        except AttributeError:
+                            pass
+                        
+                        # Stop main timer and log performance
+                        try:
+                            elapsed = logger.stop_timer("edit_file_process")
+                            logger.log_metric("edit_file_total_time", elapsed, "ms")
+                        except AttributeError:
+                            pass
+                        
+                        try:
+                            logger.clear_context()
+                        except AttributeError:
+                            pass
+                        
+                        return rendered
+                    else:
+                        logger.error(f"Failed to retrieve file {file_id}, API returned: {file_response.status_code}")
+                        
+                        # Stop timer and log performance
+                        try:
+                            elapsed = logger.stop_timer("edit_file_process")
+                            logger.log_metric("edit_file_total_time", elapsed, "ms")
+                        except AttributeError:
+                            pass
+                        
+                        try:
+                            logger.clear_context()
+                        except AttributeError:
+                            pass
+                        
+                        flash(f"Failed to retrieve file: {file_response.reason}", "error")
+                        return redirect(url_for('dashboard'))
+                
+                # Prepare request data
+                update_data = {
+                    'title': title,
+                    'content': content
+                }
+                
+                logger.info(f"Updating file {file_id} with new content")
+                
+                # Start timer for API call
+                try:
+                    logger.start_timer("api_update_file")
+                except AttributeError:
+                    pass
+                
+                # Send update request to API
+                response = requests.put(
+                    f"{config.api.base_url}/files/{file_id}",
+                    json=update_data
+                )
+                
+                # Log performance for API call
+                try:
+                    api_time = logger.stop_timer("api_update_file")
+                    logger.log_metric("api_update_file_time", api_time, "ms")
+                except AttributeError:
+                    pass
+                
+                if response.status_code == 200:
+                    logger.info(f"Successfully updated file {file_id}")
+                    
+                    # Stop timer and log performance
+                    try:
+                        elapsed = logger.stop_timer("edit_file_process")
+                        logger.log_metric("edit_file_total_time", elapsed, "ms")
+                    except AttributeError:
+                        pass
+                    
+                    try:
+                        logger.clear_context()
+                    except AttributeError:
+                        pass
+                    
+                    flash('File updated successfully', 'success')
+                    return redirect(url_for('view_file', file_id=file_id))
+                else:
+                    logger.error(f"Failed to update file {file_id}, API returned: {response.status_code}")
+                    
+                    # Stop timer and log performance
+                    try:
+                        elapsed = logger.stop_timer("edit_file_process")
+                        logger.log_metric("edit_file_total_time", elapsed, "ms")
+                    except AttributeError:
+                        pass
+                    
+                    try:
+                        logger.clear_context()
+                    except AttributeError:
+                        pass
+                    
+                    flash(f"Failed to update file: {response.reason}", "error")
+                    return redirect(url_for('edit_file', file_id=file_id))
+                    
+            except requests.RequestException as e:
+                logger.exception(f"Network error updating file {file_id}: {str(e)}")
+                
+                # Stop timer and log performance
+                try:
+                    elapsed = logger.stop_timer("edit_file_process")
+                    logger.log_metric("edit_file_total_time", elapsed, "ms")
+                except AttributeError:
+                    pass
+                
+                try:
+                    logger.clear_context()
+                except AttributeError:
+                    pass
+                
+                flash(f"Network error: {str(e)}", "error")
+                return redirect(url_for('edit_file', file_id=file_id))
+        
+        else:
+            # For GET requests, load the file and show the edit form
+            try:
+                # Start timer for API call
+                try:
+                    logger.start_timer("api_get_file")
+                except AttributeError:
+                    pass
+                
+                # Get file details from API
+                response = requests.get(f"{config.api.base_url}/files/{file_id}")
+                
+                # Log performance for API call
+                try:
+                    api_time = logger.stop_timer("api_get_file")
+                    logger.log_metric("api_get_file_time", api_time, "ms")
+                except AttributeError:
+                    pass
+                
+                if response.status_code != 200:
+                    logger.error(f"Failed to retrieve file {file_id}, API returned: {response.status_code}")
+                    
+                    # Stop timer and log performance
+                    try:
+                        elapsed = logger.stop_timer("edit_file_process")
+                        logger.log_metric("edit_file_total_time", elapsed, "ms")
+                    except AttributeError:
+                        pass
+                    
+                    try:
+                        logger.clear_context()
+                    except AttributeError:
+                        pass
+                    
+                    flash(f"Failed to retrieve file: {response.reason}", "error")
+                    return redirect(url_for('dashboard'))
+                
+                file_data = response.json()
+                
+                # Start timer for rendering template
+                try:
+                    logger.start_timer("render_edit_form")
+                except AttributeError:
+                    pass
+                
+                # Render the edit form with file data
+                rendered = render_template(
+                    'edit_file.html',
+                    file=file_data
+                )
+                
+                # Log performance for rendering
+                try:
+                    render_time = logger.stop_timer("render_edit_form")
+                    logger.log_metric("render_edit_form_time", render_time, "ms")
+                except AttributeError:
+                    pass
+                
+                # Stop main timer and log performance
+                try:
+                    elapsed = logger.stop_timer("edit_file_process")
+                    logger.log_metric("edit_file_total_time", elapsed, "ms")
+                except AttributeError:
+                    pass
+                
+                try:
+                    logger.clear_context()
+                except AttributeError:
+                    pass
+                
+                return rendered
+                
+            except requests.RequestException as e:
+                logger.exception(f"Network error retrieving file {file_id}: {str(e)}")
+                
+                # Stop timer and log performance
+                try:
+                    elapsed = logger.stop_timer("edit_file_process")
+                    logger.log_metric("edit_file_total_time", elapsed, "ms")
+                except AttributeError:
+                    pass
+                
+                try:
+                    logger.clear_context()
+                except AttributeError:
+                    pass
+                
+                flash(f"Network error: {str(e)}", "error")
+                return redirect(url_for('dashboard'))
+        
+    except Exception as e:
+        logger.exception(f"Unexpected error in edit file process: {str(e)}")
+        
+        try:
+            elapsed = logger.stop_timer("edit_file_process")
+            logger.log_metric("edit_file_total_time", elapsed, "ms")
+        except AttributeError:
+            pass
+        
+        try:
+            logger.clear_context()
+        except AttributeError:
+            pass
+        
+        flash("An unexpected error occurred", "error")
+        return redirect(url_for('dashboard'))
+
+@app.route('/new', methods=['GET', 'POST'])
+@track_performance(page_name="new_file")
+def new_file():
+    """
+    Create a new markdown file
+    """
+    try:
+        # Add request context to logger
+        try:
+            logger.set_context(page="new_file", user_id=session.get('user_id', 'anonymous'))
+        except AttributeError:
+            logger.info("Logger context setting not available")
+        
+        # Start performance timer
+        try:
+            logger.start_timer("new_file_process")
+        except AttributeError:
+            pass
+        
+        logger.info("Loading new file page")
+        
+        if request.method == 'POST':
+            title = request.form.get('title', '')
+            content = request.form.get('content', '')
+            
+            if not title:
+                logger.warning("Attempted to create file with empty title")
+                flash("Title is required", "error")
+                
+                try:
+                    elapsed = logger.stop_timer("new_file_process")
+                    logger.log_metric("new_file_total_time", elapsed, "ms")
+                except AttributeError:
+                    pass
+                
+                try:
+                    logger.clear_context()
+                except AttributeError:
+                    pass
+                
+                return render_template('new_file.html', title=title, content=content)
+            
+            logger.info(f"Creating new file with title: {title}")
+            
+            try:
+                # Start timer for API call
+                try:
+                    logger.start_timer("api_create_file")
+                except AttributeError:
+                    pass
+                
+                # Create file via API
+                response = requests.post(
+                    f"{config.api.base_url}/files",
+                    json={'title': title, 'content': content}
+                )
+                
+                # Log performance for API call
+                try:
+                    api_time = logger.stop_timer("api_create_file")
+                    logger.log_metric("api_create_file_time", api_time, "ms")
+                except AttributeError:
+                    pass
+                
+                if response.status_code != 201:
+                    logger.error(f"Failed to create file, API returned: {response.status_code}")
+                    flash("Failed to create file", "error")
+                    
+                    # Stop timer and log performance
+                    try:
+                        elapsed = logger.stop_timer("new_file_process")
+                        logger.log_metric("new_file_total_time", elapsed, "ms")
+                    except AttributeError:
+                        pass
+                    
+                    try:
+                        logger.clear_context()
+                    except AttributeError:
+                        pass
+                    
+                    return render_template('new_file.html', title=title, content=content)
+                
+                file_data = response.json()
+                file_id = file_data.get('id')
+                
+                if not file_id:
+                    logger.error("API response missing file ID")
+                    flash("Error creating file: missing file ID", "error")
+                    
+                    # Stop timer and log performance
+                    try:
+                        elapsed = logger.stop_timer("new_file_process")
+                        logger.log_metric("new_file_total_time", elapsed, "ms")
+                    except AttributeError:
+                        pass
+                    
+                    try:
+                        logger.clear_context()
+                    except AttributeError:
+                        pass
+                    
+                    return render_template('new_file.html', title=title, content=content)
+                
+                logger.info(f"File created successfully with ID: {file_id}")
+                flash("File created successfully", "success")
+                
+                # Stop timer and log performance
+                try:
+                    elapsed = logger.stop_timer("new_file_process")
+                    logger.log_metric("new_file_total_time", elapsed, "ms")
+                except AttributeError:
+                    pass
+                
+                try:
+                    logger.clear_context()
+                except AttributeError:
+                    pass
+                
+                return redirect(url_for('view_file', file_id=file_id))
+                
+            except requests.RequestException as e:
+                logger.exception(f"Network error creating file: {str(e)}")
+                flash(f"Network error: {str(e)}", "error")
+                
+                # Stop timer and log performance
+                try:
+                    elapsed = logger.stop_timer("new_file_process")
+                    logger.log_metric("new_file_total_time", elapsed, "ms")
+                except AttributeError:
+                    pass
+                
+                try:
+                    logger.clear_context()
+                except AttributeError:
+                    pass
+                
+                return render_template('new_file.html', title=title, content=content)
+        
+        # Start timer for rendering template
+        try:
+            logger.start_timer("render_new_file")
+        except AttributeError:
+            pass
+        
+        # Render the new file template
+        rendered = render_template('new_file.html', title='', content='')
+        
+        # Log performance for rendering
+        try:
+            render_time = logger.stop_timer("render_new_file")
+            logger.log_metric("render_new_file_time", render_time, "ms")
+        except AttributeError:
+            pass
+        
+        # Stop main timer and log performance
+        try:
+            elapsed = logger.stop_timer("new_file_process")
+            logger.log_metric("new_file_total_time", elapsed, "ms")
+        except AttributeError:
+            pass
+        
+        try:
+            logger.clear_context()
+        except AttributeError:
+            pass
+        
+        return rendered
+        
+    except Exception as e:
+        logger.exception(f"Unexpected error in new file process: {str(e)}")
+        
+        try:
+            elapsed = logger.stop_timer("new_file_process")
+            logger.log_metric("new_file_total_time", elapsed, "ms")
+        except AttributeError:
+            pass
+        
+        try:
+            logger.clear_context()
+        except AttributeError:
+            pass
+        
+        flash("An unexpected error occurred", "error")
+        return render_template('new_file.html', title='', content='')
+
+@app.route('/view/<file_id>')
+@track_performance(page_name="view_file")
+def view_file(file_id):
+    """
+    View a markdown file
+    """
+    try:
+        # Add request context to logger
+        try:
+            logger.set_context(page="view_file", file_id=file_id, user_id=session.get('user_id', 'anonymous'))
+        except AttributeError:
+            logger.info("Logger context setting not available")
+        
+        # Start performance timer
+        try:
+            logger.start_timer("view_file_process")
+        except AttributeError:
+            pass
+        
+        logger.info(f"Viewing file with ID: {file_id}")
+        
+        try:
+            # Start timer for API call
+            try:
+                logger.start_timer("api_get_file")
+            except AttributeError:
+                pass
+            
+            # Get file details from API
+            response = requests.get(f"{config.api.base_url}/files/{file_id}")
+            
+            # Log performance for API call
+            try:
+                api_time = logger.stop_timer("api_get_file")
+                logger.log_metric("api_get_file_time", api_time, "ms")
+            except AttributeError:
+                pass
+            
+            if response.status_code != 200:
+                logger.error(f"Failed to retrieve file {file_id}, API returned: {response.status_code}")
+                
+                # Stop timer and log performance
+                try:
+                    elapsed = logger.stop_timer("view_file_process")
+                    logger.log_metric("view_file_total_time", elapsed, "ms")
+                except AttributeError:
+                    pass
+                
+                try:
+                    logger.clear_context()
+                except AttributeError:
+                    pass
+                
+                flash(f"Failed to retrieve file: {response.reason}", "error")
+                return redirect(url_for('dashboard'))
+            
+            file_data = response.json()
+            
+            # Convert markdown to HTML
+            try:
+                logger.start_timer("markdown_conversion")
+                content_html = markdown.markdown(
+                    file_data.get('content', ''),
+                    extensions=['extra', 'codehilite', 'tables', 'toc']
+                )
+                try:
+                    markdown_time = logger.stop_timer("markdown_conversion")
+                    logger.log_metric("markdown_conversion_time", markdown_time, "ms")
+                except AttributeError:
+                    pass
+            except Exception as e:
+                logger.exception(f"Error converting markdown to HTML: {str(e)}")
+                content_html = f"<p>Error rendering markdown: {str(e)}</p>"
+            
+            # Start timer for rendering template
+            try:
+                logger.start_timer("render_view_file")
+            except AttributeError:
+                pass
+            
+            # Render the template
+            rendered = render_template(
+                'view_file.html',
+                file=file_data,
+                content_html=content_html
+            )
+            
+            # Log performance for rendering
+            try:
+                render_time = logger.stop_timer("render_view_file")
+                logger.log_metric("render_view_file_time", render_time, "ms")
+            except AttributeError:
+                pass
+            
+            # Stop main timer and log performance
+            try:
+                elapsed = logger.stop_timer("view_file_process")
+                logger.log_metric("view_file_total_time", elapsed, "ms")
+            except AttributeError:
+                pass
+            
+            try:
+                logger.clear_context()
+            except AttributeError:
+                pass
+            
+            return rendered
+            
+        except requests.RequestException as e:
+            logger.exception(f"Network error retrieving file {file_id}: {str(e)}")
+            
+            # Stop timer and log performance
+            try:
+                elapsed = logger.stop_timer("view_file_process")
+                logger.log_metric("view_file_total_time", elapsed, "ms")
+            except AttributeError:
+                pass
+            
+            try:
+                logger.clear_context()
+            except AttributeError:
+                pass
+            
+            flash(f"Network error: {str(e)}", "error")
+            return redirect(url_for('dashboard'))
+        
+    except Exception as e:
+        logger.exception(f"Unexpected error in view file process: {str(e)}")
+        
+        try:
+            elapsed = logger.stop_timer("view_file_process")
+            logger.log_metric("view_file_total_time", elapsed, "ms")
+        except AttributeError:
+            pass
+        
+        try:
+            logger.clear_context()
+        except AttributeError:
+            pass
+        
+        flash("An unexpected error occurred", "error")
+        return render_template('dashboard.html', files=[], stats={
+            'total_files': 0,
+            'total_conversions': 0,
+            'storage_used': '0 KB',
+            'conversion_success_rate': '0%'
+        })
+
+@app.route('/dashboard')
+@track_performance(page_name="dashboard")
+def dashboard():
+    """
+    Display the user's dashboard with file listings and statistics
+    """
+    try:
+        # Add request context to logger
+        try:
+            logger.set_context(page="dashboard", user_id=session.get('user_id', 'anonymous'))
+        except AttributeError:
+            logger.info("Logger context setting not available")
+        
+        # Start performance timer
+        try:
+            logger.start_timer("dashboard_process")
+        except AttributeError:
+            pass
+        
+        logger.info("Loading dashboard page")
+        
+        try:
+            # Start timer for API call
+            try:
+                logger.start_timer("api_get_files")
+            except AttributeError:
+                pass
+            
+            # Get files from API
+            response = requests.get(f"{config.api.base_url}/files")
+            
+            # Log performance for API call
+            try:
+                api_time = logger.stop_timer("api_get_files")
+                logger.log_metric("api_get_files_time", api_time, "ms")
+            except AttributeError:
+                pass
+            
+            if response.status_code != 200:
+                logger.error(f"Failed to retrieve files for dashboard, status: {response.status_code}")
+                files_data = []
+            else:
+                files_data = response.json()
+                logger.info(f"Retrieved {len(files_data)} files for dashboard")
+            
+            # Start timer for stats API call
+            try:
+                logger.start_timer("api_get_stats")
+            except AttributeError:
+                pass
+            
+            # Get usage statistics from API
+            stats_response = requests.get(f"{config.api.base_url}/statistics")
+            
+            # Log performance for stats API call
+            try:
+                stats_api_time = logger.stop_timer("api_get_stats")
+                logger.log_metric("api_get_stats_time", stats_api_time, "ms")
+            except AttributeError:
+                pass
+            
+            if stats_response.status_code != 200:
+                logger.error(f"Failed to retrieve statistics, status: {stats_response.status_code}")
+                stats = {
+                    'total_files': 0,
+                    'total_conversions': 0,
+                    'storage_used': '0 KB',
+                    'conversion_success_rate': '0%'
+                }
+            else:
+                stats = stats_response.json()
+                logger.info("Retrieved statistics for dashboard")
+            
+            # Start timer for rendering template
+            try:
+                logger.start_timer("render_dashboard")
+            except AttributeError:
+                pass
+            
+            # Render the dashboard template
+            rendered = render_template('dashboard.html', files=files_data, stats=stats)
+            
+            # Log performance for rendering
+            try:
+                render_time = logger.stop_timer("render_dashboard")
+                logger.log_metric("render_dashboard_time", render_time, "ms")
+            except AttributeError:
+                pass
+            
+            # Stop main timer and log performance
+            try:
+                elapsed = logger.stop_timer("dashboard_process")
+                logger.log_metric("dashboard_total_time", elapsed, "ms")
+            except AttributeError:
+                pass
+            
+            try:
+                logger.clear_context()
+            except AttributeError:
+                pass
+            
+            return rendered
+        
+        except requests.RequestException as e:
+            logger.exception(f"Network error retrieving data for dashboard: {str(e)}")
+            
+            # Stop timer and log performance
+            try:
+                elapsed = logger.stop_timer("dashboard_process")
+                logger.log_metric("dashboard_total_time", elapsed, "ms")
+            except AttributeError:
+                pass
+            
+            try:
+                logger.clear_context()
+            except AttributeError:
+                pass
+            
+            flash(f"Network error: {str(e)}", "error")
+            return render_template('dashboard.html', files=[], stats={
+                'total_files': 0,
+                'total_conversions': 0,
+                'storage_used': '0 KB',
+                'conversion_success_rate': '0%'
+            })
+            
+        except Exception as e:
+            logger.exception(f"Error retrieving data for dashboard: {str(e)}")
+            
+            # Stop timer and log performance
+            try:
+                elapsed = logger.stop_timer("dashboard_process")
+                logger.log_metric("dashboard_total_time", elapsed, "ms")
+            except AttributeError:
+                pass
+            
+            try:
+                logger.clear_context()
+            except AttributeError:
+                pass
+            
+            flash(f"Error: {str(e)}", "error")
+            return render_template('dashboard.html', files=[], stats={
+                'total_files': 0,
+                'total_conversions': 0,
+                'storage_used': '0 KB',
+                'conversion_success_rate': '0%'
+            })
+    
+    except Exception as e:
+        logger.exception(f"Unexpected error in dashboard process: {str(e)}")
+        
+        try:
+            logger.clear_context()
+        except AttributeError:
+            pass
+        
+        flash("An unexpected error occurred", "error")
+        return render_template('dashboard.html', files=[], stats={
+            'total_files': 0,
+            'total_conversions': 0,
+            'storage_used': '0 KB',
+            'conversion_success_rate': '0%'
         })
 
 # Error handlers

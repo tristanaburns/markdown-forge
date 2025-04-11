@@ -11,232 +11,275 @@ import subprocess
 import time
 import webbrowser
 import logging
+import select
+import io
 from concurrent.futures import ThreadPoolExecutor
 from threading import Thread
 from datetime import datetime
 from pathlib import Path
+from typing import Optional, Dict, Any, List, Union
+import tempfile
+import shutil
+import platform
+import traceback
+
+# Import fcntl only on Unix-like systems
+if platform.system() != 'Windows':
+    import fcntl
+else:
+    # Mock implementation for Windows
+    class MockFcntl:
+        @staticmethod
+        def fcntl(fd, op, arg=0):
+            # No-op on Windows
+            return 0
+        
+        # Constants for the mock
+        F_GETFL = 3
+        F_SETFL = 4
+        O_NONBLOCK = 2048
+    
+    fcntl = MockFcntl
+
+from app.utils.logger import AppLogger, log_function
 
 FRONTEND_DIR = "app"
 BACKEND_DIR = "backend"
 TESTS_DIR = "tests"
 LOG_DIR = "logs"
 
-# Configure logging
-def setup_logging():
-    """Configure logging based on environment variables."""
-    # Create logs directory if it doesn't exist
-    log_dir = Path(LOG_DIR)
-    log_dir.mkdir(exist_ok=True)
-    
-    # Create specific log files
-    timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
-    setup_log_file = log_dir / f"setup_{timestamp}.log"
-    install_log_file = log_dir / f"install_{timestamp}.log"
-    build_log_file = log_dir / f"build_{timestamp}.log"
-    general_log_file = log_dir / f"markdown_forge_{timestamp}.log"
-    
-    # Get log level from environment variables
-    log_level = os.environ.get("LOG_LEVEL", "INFO").upper()
-    setup_debug = os.environ.get("SETUP_DEBUG", "0") == "1"
-    build_debug = os.environ.get("BUILD_DEBUG", "0") == "1"
-    install_debug = os.environ.get("INSTALL_DEBUG", "0") == "1"
-    
-    level = getattr(logging, log_level, logging.INFO)
-    
-    # Configure root logger
-    logging.basicConfig(
-        level=level,
-        format='%(asctime)s - %(name)s - %(levelname)s - %(message)s',
-        datefmt='%Y-%m-%d %H:%M:%S',
-        filename=general_log_file,
-        filemode='w'
-    )
-    
-    # Create console handler for displaying logs in terminal
-    console = logging.StreamHandler()
-    console.setLevel(level)
-    console_formatter = logging.Formatter('%(asctime)s - %(name)s - %(levelname)s - %(message)s')
-    console.setFormatter(console_formatter)
-    logging.getLogger('').addHandler(console)
-    
-    # Setup dedicated loggers for each component
-    setup_logger = logging.getLogger("setup")
-    install_logger = logging.getLogger("install")
-    build_logger = logging.getLogger("build")
-    
-    # Create file handlers for specific logs
-    setup_handler = logging.FileHandler(setup_log_file)
-    install_handler = logging.FileHandler(install_log_file)
-    build_handler = logging.FileHandler(build_log_file)
-    
-    # Set levels based on debug flags
-    setup_level = logging.DEBUG if setup_debug else level
-    install_level = logging.DEBUG if install_debug else level
-    build_level = logging.DEBUG if build_debug else level
-    
-    setup_handler.setLevel(setup_level)
-    install_handler.setLevel(install_level)
-    build_handler.setLevel(build_level)
-    
-    # Create formatters
-    formatter = logging.Formatter('%(asctime)s - %(levelname)s - %(message)s')
-    setup_handler.setFormatter(formatter)
-    install_handler.setFormatter(formatter)
-    build_handler.setFormatter(formatter)
-    
-    # Add handlers to loggers
-    setup_logger.addHandler(setup_handler)
-    install_logger.addHandler(install_handler)
-    build_logger.addHandler(build_handler)
-    
-    # Set propagation
-    setup_logger.propagate = True
-    install_logger.propagate = True
-    build_logger.propagate = True
-    
-    # Create the main logger
-    logger = logging.getLogger("markdown-forge")
-    logger.setLevel(level)
-    
-    # Log startup information
-    logger.info(f"Logging initialized. Log files are stored in: {log_dir.absolute()}")
-    logger.info(f"General log file: {general_log_file}")
-    logger.info(f"Setup log file: {setup_log_file}")
-    logger.info(f"Install log file: {install_log_file}")
-    logger.info(f"Build log file: {build_log_file}")
-    
-    # Log debug configuration
-    if any([setup_debug, build_debug, install_debug]):
-        logger.debug("Debug logging enabled:")
-        logger.debug(f"- SETUP_DEBUG: {setup_debug}")
-        logger.debug(f"- BUILD_DEBUG: {build_debug}")
-        logger.debug(f"- INSTALL_DEBUG: {install_debug}")
-    
-    # Return all loggers
-    return {
-        "main": logger,
-        "setup": setup_logger,
-        "install": install_logger,
-        "build": build_logger
-    }
-
 # Initialize loggers
-loggers = setup_logging()
-logger = loggers["main"]
-setup_logger = loggers["setup"]
-install_logger = loggers["install"]
-build_logger = loggers["build"]
+logger = AppLogger('markdown_forge', os.path.join(LOG_DIR, 'app.log'), 'DEBUG')
+setup_logger = AppLogger('setup', os.path.join(LOG_DIR, 'setup.log'), 'DEBUG')
+install_logger = AppLogger('install', os.path.join(LOG_DIR, 'install.log'), 'DEBUG')
+build_logger = AppLogger('build', os.path.join(LOG_DIR, 'build.log'), 'DEBUG')
 
-def print_header(message):
-    """Print a formatted header message."""
-    print("\n" + "=" * 80)
-    print(f"  {message}")
-    print("=" * 80 + "\n")
-    logger.info(message)
+@log_function(logger)
+def normalize_path(path: str) -> str:
+    """
+    Normalize path separators for the current platform.
+    
+    Args:
+        path (str): The path to normalize
+        
+    Returns:
+        str: The normalized path
+    """
+    if platform.system() == 'Windows':
+        return path.replace('/', '\\')
+    else:
+        return path.replace('\\', '/')
 
-def run_command(command, cwd=None, env=None, log_to=None):
-    """Run a command in a subprocess and return the process object."""
-    logger.debug(f"Running command: {command}")
-    if cwd:
-        logger.debug(f"Working directory: {cwd}")
+@log_function(logger)
+def print_header(title: str) -> None:
+    """Print a formatted header."""
+    print("\n" + "=" * 50)
+    print(f" {title} ".center(50))
+    print("=" * 50 + "\n")
+
+@log_function(logger)
+def run_command(command, cwd=None, env=None, shell=False, prefix=None, check=True, pipe_output=True, log_to=None):
+    """
+    Run a command and stream its output
     
-    # Use current environment if none is provided
-    if env is None:
-        env = os.environ.copy()
-    
-    # Log command to specific logger if requested
+    Args:
+        command (list or str): Command to run
+        cwd (str, optional): Working directory. Defaults to None.
+        env (dict, optional): Environment variables. Defaults to None.
+        shell (bool, optional): Whether to run in a shell. Defaults to False.
+        prefix (str, optional): Prefix for output lines. Defaults to None.
+        check (bool, optional): Whether to check return code. Defaults to True.
+        pipe_output (bool, optional): Whether to capture and pipe output. Defaults to True.
+        log_to (str, optional): Specific logger to use ('install', 'build', 'setup'). Defaults to None.
+        
+    Returns:
+        subprocess.Popen: The process object
+        
+    Raises:
+        subprocess.CalledProcessError: If the command fails and check is True
+    """
+    # Select the appropriate logger based on log_to parameter
+    cmd_logger = logger
     if log_to == "install":
-        install_logger.debug(f"Running command: {command}")
+        cmd_logger = install_logger
     elif log_to == "build":
-        build_logger.debug(f"Running command: {command}")
+        cmd_logger = build_logger
+    elif log_to == "setup":
+        cmd_logger = setup_logger
     
-    # Start the process with pipes for reading output
+    cmd_logger.debug(f"Running command: {command}")
+    cmd_logger.debug(f"Working directory: {cwd}")
+    cmd_logger.debug(f"Environment variables: {env}")
+    
+    stdout_pipe = subprocess.PIPE if pipe_output else None
+    stderr_pipe = subprocess.PIPE if pipe_output else None
+    
+    # Ensure command is a list for subprocess
+    if isinstance(command, str) and not shell:
+        command_list = command.split()
+    else:
+        command_list = command
+    
     try:
         process = subprocess.Popen(
-            command,
-            shell=True,
-            stdout=subprocess.PIPE,
-            stderr=subprocess.PIPE,
-            text=False,  # Use binary mode
-            bufsize=1,  # Line buffered
-            universal_newlines=False,
+            command_list,
+            stdout=stdout_pipe,
+            stderr=stderr_pipe,
             cwd=cwd,
-            env=env
+            env=env,
+            shell=shell,
+            universal_newlines=False,
+            bufsize=0  # Use unbuffered (0) instead of line buffered (1)
         )
+        
+        cmd_logger.debug(f"Process started with PID: {process.pid}")
+        
+        if pipe_output:
+            stream_output(process, prefix=prefix, custom_logger=cmd_logger)
+        
+        # If check is True, wait for completion and check return code
+        if check:
+            return_code = process.wait()
+            cmd_logger.debug(f"Process completed with return code: {return_code}")
+            
+            if return_code != 0:
+                error_msg = f"Command failed with return code {return_code}: {command}"
+                cmd_logger.error(error_msg)
+                raise subprocess.CalledProcessError(return_code, command)
+        
+        # Return the process object for the caller to manage
         return process
+        
+    except (OSError, IOError) as e:
+        error_msg = f"Failed to start process: {str(e)}"
+        cmd_logger.error(error_msg)
+        if check:
+            raise
+        # Create a mock process object with error code
+        mock_process = type('MockProcess', (), {'returncode': 1})()
+        return mock_process
     except Exception as e:
-        error_msg = f"Error starting process: {str(e)}"
-        logger.error(error_msg)
-        
-        if log_to == "install":
-            install_logger.error(error_msg)
-        elif log_to == "build":
-            build_logger.error(error_msg)
-        
-        print(f"Error: {str(e)}")
-        raise
+        error_msg = f"Error running command: {str(e)}"
+        cmd_logger.error(error_msg)
+        cmd_logger.error(f"Exception details: {traceback.format_exc()}")
+        if check:
+            raise
+        # Create a mock process object with error code
+        mock_process = type('MockProcess', (), {'returncode': 1})()
+        return mock_process
 
-def stream_output(process, prefix="", log_to=None):
-    """Stream output from a process in real-time."""
-    output = ""
-    try:
-        # Check if there's any stdout output
-        if process.stdout.peek():
-            line = process.stdout.readline().decode('utf-8', errors='replace').strip()
-            if line:
-                if prefix:
-                    formatted_line = f"{prefix} | {line}"
-                else:
-                    formatted_line = line
-                
-                print(formatted_line)
-                
-                if log_to == "install":
-                    install_logger.debug(formatted_line)
-                elif log_to == "build":
-                    build_logger.debug(formatted_line)
-                else:
-                    logger.debug(formatted_line)
-                output += line + "\n"
-        
-        # Check if there's any stderr output
-        if process.stderr.peek():
-            line = process.stderr.readline().decode('utf-8', errors='replace').strip()
-            if line:
-                if prefix:
-                    formatted_line = f"{prefix} ERROR | {line}"
-                else:
-                    formatted_line = f"ERROR | {line}"
-                
-                print(formatted_line)
-                
-                if log_to == "install":
-                    install_logger.error(formatted_line)
-                elif log_to == "build":
-                    build_logger.error(formatted_line)
-                else:
-                    logger.error(formatted_line)
-                output += "ERROR: " + line + "\n"
-    except (IOError, AttributeError, ValueError) as e:
-        logger.error(f"Error streaming output: {str(e)}")
+@log_function(logger)
+def stream_output(process, prefix=None, timeout=0.5, custom_logger=None):
+    """
+    Stream output from a subprocess with non-blocking IO operations and timeout
     
-    return output
+    Args:
+        process (subprocess.Popen): The subprocess to stream output from
+        prefix (str, optional): Prefix to add to output lines. Defaults to None.
+        timeout (float, optional): Timeout in seconds for select. Defaults to 0.5.
+        custom_logger (AppLogger, optional): Specific logger to use. Defaults to None.
+    """
+    # Use the provided logger or fall back to the default
+    output_logger = custom_logger if custom_logger else logger
+    
+    output_logger.debug(f"Streaming output from process {process.pid} with prefix: {prefix}")
+    
+    if process.stdout is None or process.stderr is None:
+        output_logger.error("Process stdout or stderr is None, cannot stream output")
+        return
+    
+    # Different handling for Windows vs Unix-like platforms
+    if platform.system() != 'Windows':
+        # Make stdout and stderr non-blocking on Unix-like systems
+        for stream in [process.stdout, process.stderr]:
+            if hasattr(stream, 'fileno'):
+                try:
+                    fd = stream.fileno()
+                    fl = fcntl.fcntl(fd, fcntl.F_GETFL)
+                    fcntl.fcntl(fd, fcntl.F_SETFL, fl | os.O_NONBLOCK)
+                except (AttributeError, ValueError, io.UnsupportedOperation) as e:
+                    output_logger.warning(f"Could not set non-blocking mode: {str(e)}")
+    
+    # Stream output until process completes
+    try:
+        while process.poll() is None:
+            # Use select on Unix-like systems, alternative on Windows
+            if platform.system() != 'Windows':
+                try:
+                    ready_to_read, _, _ = select.select([process.stdout, process.stderr], [], [], timeout)
+                except (select.error, ValueError, io.UnsupportedOperation) as e:
+                    output_logger.warning(f"Select operation failed: {str(e)}")
+                    # Fall back to reading from both on error
+                    ready_to_read = [process.stdout, process.stderr]
+            else:
+                # Windows doesn't support select on pipes, so we'll just try reading from both
+                ready_to_read = [process.stdout, process.stderr]
+            
+            for stream in ready_to_read:
+                try:
+                    output = stream.readline()
+                    if output:
+                        output_str = output.decode('utf-8', errors='replace').strip()
+                        if output_str:
+                            if prefix:
+                                print(f"{prefix}: {output_str}")
+                            else:
+                                print(output_str)
+                            
+                            # Determine if this is stdout or stderr
+                            is_stderr = (stream == process.stderr)
+                            if is_stderr:
+                                output_logger.warning(f"Process stderr: {output_str}")
+                            else:
+                                output_logger.debug(f"Process stdout: {output_str}")
+                except (IOError, ValueError) as e:
+                    output_logger.error(f"Error reading from process: {str(e)}")
+                    # Don't break here, just continue with the next stream
+                    continue
+                
+            # On Windows, add a small delay to avoid high CPU usage
+            if platform.system() == 'Windows':
+                import time
+                time.sleep(0.1)
+        
+        # Read any remaining output after process completes
+        for stream in [process.stdout, process.stderr]:
+            try:
+                remaining = stream.read()
+                if remaining:
+                    output_str = remaining.decode('utf-8', errors='replace').strip()
+                    if output_str:
+                        if prefix:
+                            print(f"{prefix}: {output_str}")
+                        else:
+                            print(output_str)
+                        output_logger.debug(f"Remaining output: {output_str}")
+            except (IOError, ValueError) as e:
+                output_logger.error(f"Error reading remaining output: {str(e)}")
+    except KeyboardInterrupt:
+        output_logger.info("Keyboard interrupt received while streaming output")
+        # Don't re-raise, let the parent handle the interrupt
+    except Exception as e:
+        output_logger.error(f"Unexpected error during output streaming: {str(e)}")
+        output_logger.error(traceback.format_exc())
 
-def ensure_directory_exists(directory):
+@log_function(logger)
+def ensure_directory_exists(directory: str) -> None:
     """Ensure a directory exists, creating it if necessary."""
     if not os.path.exists(directory):
         os.makedirs(directory)
         logger.info(f"Created directory: {directory}")
         print(f"Created directory: {directory}")
 
-def check_requirements():
+@log_function(install_logger)
+def check_requirements() -> bool:
     """Check if all requirements are installed."""
     setup_debug = os.environ.get("SETUP_DEBUG", "0") == "1"
     install_debug = os.environ.get("INSTALL_DEBUG", "0") == "1"
     
     print_header("Checking requirements")
     
-    # Create logs directory if it doesn't exist (in case we're running this first time)
+    # Create logs directory if it doesn't exist
     log_dir = Path(LOG_DIR)
     log_dir.mkdir(exist_ok=True)
     
@@ -300,11 +343,11 @@ def check_requirements():
     
     # Determine pip command based on platform
     if sys.platform.startswith('win'):
-        python_cmd = ".\\venv\\Scripts\\python"
-        pip_cmd = ".\\venv\\Scripts\\pip"
+        python_cmd = normalize_path(".\\venv\\Scripts\\python")
+        pip_cmd = normalize_path(".\\venv\\Scripts\\pip")
     else:
-        python_cmd = "./venv/bin/python"
-        pip_cmd = "./venv/bin/pip"
+        python_cmd = normalize_path("./venv/bin/python")
+        pip_cmd = normalize_path("./venv/bin/pip")
     
     # Add verbosity flags based on debug settings
     pip_flags = ""
@@ -708,7 +751,8 @@ def check_requirements():
     
     return True
 
-def start_frontend():
+@log_function(logger)
+def start_frontend() -> subprocess.Popen:
     """Start the frontend Flask application."""
     build_debug = os.environ.get("BUILD_DEBUG", "0") == "1"
     
@@ -726,9 +770,9 @@ def start_frontend():
     
     # Run Flask application
     if sys.platform.startswith('win'):
-        python_cmd = ".\\venv\\Scripts\\python"
+        python_cmd = normalize_path(".\\venv\\Scripts\\python")
     else:
-        python_cmd = "./venv/bin/python"
+        python_cmd = normalize_path("./venv/bin/python")
     
     flask_cmd = f"{python_cmd} -m flask run --host=0.0.0.0 --port=5000"
     logger.debug(f"Starting frontend with command: {flask_cmd}")
@@ -741,7 +785,8 @@ def start_frontend():
     
     return process
 
-def start_backend():
+@log_function(logger)
+def start_backend() -> subprocess.Popen:
     """Start the backend FastAPI application."""
     build_debug = os.environ.get("BUILD_DEBUG", "0") == "1"
     
@@ -760,9 +805,9 @@ def start_backend():
     
     # Run Uvicorn server
     if sys.platform.startswith('win'):
-        python_cmd = ".\\venv\\Scripts\\python"
+        python_cmd = normalize_path(".\\venv\\Scripts\\python")
     else:
-        python_cmd = "./venv/bin/python"
+        python_cmd = normalize_path("./venv/bin/python")
     
     uvicorn_cmd = f"{python_cmd} -m uvicorn backend.main:app --host=0.0.0.0 --port=8000 --log-level={log_level}"
     logger.debug(f"Starting backend with command: {uvicorn_cmd}")
@@ -775,145 +820,90 @@ def start_backend():
     
     return process
 
-def run_both():
-    """Run both frontend and backend applications."""
-    print_header("Starting both Frontend and Backend")
-    logger.info("Starting both frontend and backend applications")
+@log_function(logger)
+def run_both() -> None:
+    """Run both frontend and backend components."""
+    print_header("Starting Both Components")
     
-    # Create the required directories
-    ensure_directory_exists(os.path.join(FRONTEND_DIR, "data", "converted"))
-    ensure_directory_exists(os.path.join(BACKEND_DIR, "data"))
-    logger.debug("Ensured required directories exist")
+    # Start both components
+    frontend_process = start_frontend()
+    backend_process = start_backend()
     
-    print("Making sure required directories exist...")
+    logger.info("Both components started. Press Ctrl+C to stop.")
     
-    # Set environment variables for debugging
-    env = os.environ.copy()
-    env["FLASK_DEBUG"] = "1"
-    env["LOG_LEVEL"] = "DEBUG"
-    env["UVICORN_RELOAD"] = "true"
-    env["BUILD_DEBUG"] = "1"
-    
-    print("Starting the backend process...")
-    # Start backend first with direct output
-    if sys.platform.startswith('win'):
-        python_cmd = ".\\venv\\Scripts\\python"
-    else:
-        python_cmd = "./venv/bin/python"
-    
-    uvicorn_cmd = f"{python_cmd} -m uvicorn backend.main:app --host=0.0.0.0 --port=8000 --log-level=debug"
-    logger.debug(f"Starting backend with command: {uvicorn_cmd}")
-    
-    backend_process = run_command(
-        uvicorn_cmd,
-        cwd=os.getcwd(),
-        env=env
-    )
-    
-    # Show immediate output from backend
-    print("Backend starting (waiting for output)...")
-    time.sleep(3)
-    stream_output(backend_process, "BACKEND")
-    
-    # Give the backend a moment to start
-    time.sleep(2)
-    
-    print("Starting the frontend process...")
-    # Then start frontend with direct output
-    flask_cmd = f"{python_cmd} -m flask run --host=0.0.0.0 --port=5000"
-    logger.debug(f"Starting frontend with command: {flask_cmd}")
-    
-    frontend_process = run_command(
-        flask_cmd,
-        cwd=os.getcwd(),
-        env=env
-    )
-    
-    # Show immediate output from frontend
-    print("Frontend starting (waiting for output)...")
-    time.sleep(3)
-    stream_output(frontend_process, "FRONTEND")
-    
-    # Wait a moment for both to be running
-    time.sleep(2)
-    
-    # Open browser tabs
     try:
-        logger.debug("Opening browser for frontend")
-        webbrowser.open("http://localhost:5000")
-        
-        logger.debug("Opening browser for backend docs")
-        webbrowser.open("http://localhost:8000/docs")
-    except Exception as e:
-        logger.error(f"Failed to open browser: {str(e)}")
-        pass
-    
-    # Wait for processes to complete
-    try:
-        logger.debug("Both processes started successfully")
-        
-        # Stream output from both processes
-        while True:
-            print("Checking process output...")
-            backend_output = stream_output(backend_process, "BACKEND")
-            frontend_output = stream_output(frontend_process, "FRONTEND")
-            
-            # Check if either process has terminated
-            if backend_process.poll() is not None:
-                logger.warning(f"Backend process terminated with code {backend_process.poll()}")
-                print(f"Backend process terminated with code {backend_process.poll()}")
-                frontend_process.terminate()
-                break
-                
-            if frontend_process.poll() is not None:
-                logger.warning(f"Frontend process terminated with code {frontend_process.poll()}")
-                print(f"Frontend process terminated with code {frontend_process.poll()}")
-                backend_process.terminate()
-                break
-                
-            # Sleep to prevent CPU usage
-            time.sleep(2)
+        # Wait for both processes to complete or for a keyboard interrupt
+        frontend_process.wait()
+        backend_process.wait()
     except KeyboardInterrupt:
-        logger.info("Keyboard interrupt received, shutting down")
-        print("\nShutting down...")
-        backend_process.terminate()
-        frontend_process.terminate()
-        return
+        logger.info("Keyboard interrupt received, stopping components...")
+        
+        # Try to terminate processes gracefully
+        if frontend_process.poll() is None:
+            logger.debug("Terminating frontend process")
+            frontend_process.terminate()
+        
+        if backend_process.poll() is None:
+            logger.debug("Terminating backend process")
+            backend_process.terminate()
+        
+        # Wait for processes to terminate (with timeout)
+        try:
+            frontend_process.wait(timeout=5)
+            backend_process.wait(timeout=5)
+        except subprocess.TimeoutExpired:
+            # If processes don't terminate gracefully, kill them
+            logger.warning("Processes didn't terminate gracefully, killing them")
+            if frontend_process.poll() is None:
+                frontend_process.kill()
+            if backend_process.poll() is None:
+                backend_process.kill()
+        
+        logger.info("Components stopped")
+        print("Components stopped")
+    except Exception as e:
+        logger.error(f"Error while running components: {str(e)}")
+        logger.error(traceback.format_exc())
+        
+        # Make sure processes are terminated
+        if frontend_process.poll() is None:
+            frontend_process.terminate()
+        if backend_process.poll() is None:
+            backend_process.terminate()
 
-def run_tests(test_type="all"):
+@log_function(logger)
+def run_tests(test_type: str = "all") -> int:
     """Run tests for the application."""
     print_header(f"Running {test_type} tests")
     logger.info(f"Running {test_type} tests")
     
-    # Determine the test command based on the type
+    # Get pytest command based on platform
     if sys.platform.startswith('win'):
-        python_cmd = ".\\venv\\Scripts\\python"
-        pytest_cmd = ".\\venv\\Scripts\\pytest"
+        python_cmd = normalize_path(".\\venv\\Scripts\\python")
     else:
-        python_cmd = "./venv/bin/python"
-        pytest_cmd = "./venv/bin/pytest"
+        python_cmd = normalize_path("./venv/bin/python")
     
     # Set up test command based on test type
     if test_type == "frontend":
-        cmd = f"{pytest_cmd} {FRONTEND_DIR}/tests"
+        cmd = f"{python_cmd} -m pytest {FRONTEND_DIR}/tests"
         logger.debug(f"Running frontend tests with command: {cmd}")
     elif test_type == "backend":
-        cmd = f"{pytest_cmd} {BACKEND_DIR}/tests"
+        cmd = f"{python_cmd} -m pytest {BACKEND_DIR}/tests"
         logger.debug(f"Running backend tests with command: {cmd}")
     elif test_type == "unit":
-        cmd = f"{pytest_cmd} {TESTS_DIR}/unit"
+        cmd = f"{python_cmd} -m pytest {TESTS_DIR}/unit"
         logger.debug(f"Running unit tests with command: {cmd}")
     elif test_type == "integration":
-        cmd = f"{pytest_cmd} {TESTS_DIR}/integration"
+        cmd = f"{python_cmd} -m pytest {TESTS_DIR}/integration"
         logger.debug(f"Running integration tests with command: {cmd}")
     elif test_type == "performance":
-        cmd = f"{pytest_cmd} {TESTS_DIR}/performance"
+        cmd = f"{python_cmd} -m pytest {TESTS_DIR}/performance"
         logger.debug(f"Running performance tests with command: {cmd}")
     elif test_type == "security":
-        cmd = f"{pytest_cmd} {TESTS_DIR}/security"
+        cmd = f"{python_cmd} -m pytest {TESTS_DIR}/security"
         logger.debug(f"Running security tests with command: {cmd}")
     else:  # all tests
-        cmd = f"{pytest_cmd}"
+        cmd = f"{python_cmd} -m pytest"
         logger.debug(f"Running all tests with command: {cmd}")
     
     # Add coverage report if running all tests
@@ -937,7 +927,8 @@ def run_tests(test_type="all"):
     
     return process.returncode
 
-def setup_dev_environment():
+@log_function(setup_logger)
+def setup_dev_environment() -> bool:
     """Set up the development environment."""
     setup_debug = os.environ.get("SETUP_DEBUG", "0") == "1"
     
@@ -985,75 +976,87 @@ def setup_dev_environment():
     
     return True
 
-def main():
-    """Main entry point for the script."""
-    parser = argparse.ArgumentParser(description='Markdown Forge run script')
-    subparsers = parser.add_subparsers(dest='command', help='Command to run')
+@log_function(logger)
+def main() -> int:
+    """Main entry point."""
+    parser = argparse.ArgumentParser(description="Markdown Forge Development Script")
+    subparsers = parser.add_subparsers(dest="command", help="Command to run")
     
     # Run command
-    run_parser = subparsers.add_parser('run', help='Run the application')
-    run_parser.add_argument('component', nargs='?', choices=['frontend', 'backend', 'all'], default='all', 
-                         help='Component to run (frontend, backend, or all)')
-    run_parser.add_argument('--debug', action='store_true', help='Enable debug mode')
-    
-    # Test command
-    test_parser = subparsers.add_parser('test', help='Run tests')
-    test_parser.add_argument('test_type', nargs='?', choices=['all', 'frontend', 'backend', 'unit', 'integration', 'performance', 'security'], 
-                          default='all', help='Test type to run')
+    run_parser = subparsers.add_parser("run", help="Run the application")
+    run_parser.add_argument("component", nargs="?", choices=["frontend", "backend"], 
+                            help="Component to run (frontend or backend)")
+    run_parser.add_argument("--debug", action="store_true", help="Enable debug mode")
     
     # Setup command
-    setup_parser = subparsers.add_parser('setup', help='Set up development environment')
+    setup_parser = subparsers.add_parser("setup", help="Set up the development environment")
+    
+    # Test command
+    test_parser = subparsers.add_parser("test", help="Run tests")
+    test_parser.add_argument("test_type", nargs="?", choices=["frontend", "backend", "unit", "integration", "performance", "security", "all"],
+                            default="all", help="Type of tests to run")
     
     args = parser.parse_args()
     
-    # Configure logging
-    setup_logging()
+    if args.command is None:
+        parser.print_help()
+        return 0
     
-    # Handle debug mode
-    if getattr(args, 'debug', False):
-        os.environ['LOG_LEVEL'] = 'DEBUG'
-        os.environ['FLASK_DEBUG'] = '1'
-        os.environ['SETUP_DEBUG'] = '1'
-        os.environ['BUILD_DEBUG'] = '1'
-        os.environ['INSTALL_DEBUG'] = '1'
-        logger.info("Debug mode enabled")
-        print("Debug mode enabled")
+    # Set environment variables based on arguments
+    if hasattr(args, "debug") and args.debug:
+        os.environ["LOG_LEVEL"] = "DEBUG"
+        os.environ["FLASK_DEBUG"] = "1"
+        os.environ["SETUP_DEBUG"] = "1"
+        os.environ["BUILD_DEBUG"] = "1"
+        os.environ["INSTALL_DEBUG"] = "1"
+        logger.debug("Debug mode enabled")
     
-    # Run the appropriate command
+    # Extract command and attempt to run it
+    command = args.command.lower()
+    
     try:
-        if args.command == 'run':
-            logger.info(f"Run command: {args.component}")
-            
-            if args.component == 'frontend':
-                process = start_frontend()
-                process.wait()
-            elif args.component == 'backend':
-                process = start_backend()
-                process.wait()
-            else:  # all
-                run_both()
-                
-        elif args.command == 'test':
-            run_tests(args.test_type)
-            
-        elif args.command == 'setup':
-            logger.info("Setup command")
+        if command == "run":
+            logger.info(f"Running application component: {args.component if args.component else 'both'}")
+            try:
+                if args.component == "frontend":
+                    process = start_frontend()
+                    process.wait()
+                elif args.component == "backend":
+                    process = start_backend()
+                    process.wait()
+                else:
+                    run_both()
+            except KeyboardInterrupt:
+                logger.info("Keyboard interrupt received during application run")
+                print("\nStopping application...")
+                return 0
+        elif command == "setup":
+            logger.info("Setting up development environment")
             setup_dev_environment()
-            
-        else:
-            print("Please specify a command. Use --help for more information.")
-            return 1
+        elif command == "test":
+            logger.info(f"Running tests: {args.test_type}")
+            run_tests(args.test_type)
+        
+        logger.info("Command completed successfully")
+        return 0
     except KeyboardInterrupt:
         logger.info("Keyboard interrupt received")
         print("\nOperation cancelled by user")
+        # Terminate any running processes
+        try:
+            # Find and kill any Python processes that we might have started
+            if platform.system() == 'Windows':
+                os.system("taskkill /f /im python.exe /t 2>nul")
+            else:
+                # This is a simplified approach and may not work in all cases
+                os.system("pkill -f 'python run.py|flask run|uvicorn' 2>/dev/null")
+        except Exception as e:
+            logger.error(f"Error during process cleanup: {str(e)}")
+        return 0
     except Exception as e:
-        logger.error(f"Unhandled exception: {str(e)}")
-        print(f"Error: {str(e)}")
-        import traceback
+        logger.error(f"Error during command execution: {str(e)}")
         logger.error(traceback.format_exc())
         return 1
-        
-    return 0
 
 if __name__ == "__main__":
     try:
